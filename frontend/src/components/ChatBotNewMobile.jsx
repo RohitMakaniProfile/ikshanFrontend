@@ -2017,7 +2017,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
               {flowStage === 'outcome' && (
                  <>
                     {/* Icon removed */}
-                    <h1>Professional expertise, on-demand—without the salary or recruiting.</h1>
+                    <h1>Scale Your Business with AI Agents - Start Today</h1>
                     <p>Select what matters most to you right now</p>
                     <div className="suggestions-grid">
                       {outcomeOptions.map((outcome, index) => (
