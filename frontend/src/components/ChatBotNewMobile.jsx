@@ -914,7 +914,7 @@ const ChatBotNewMobile = () => {
     const orderId = urlOrderId || pendingOrderId;
 
     // Only verify if JusPay actually returned success status
-    if (orderId && paymentStatus === 'success') {
+    if (orderId && (paymentStatus === 'success' || paymentStatus === 'charged')) {
       const verifyPayment = async () => {
         try {
           const res = await fetch(apiUrl(`/api/v1/payments/status/${orderId}`));
