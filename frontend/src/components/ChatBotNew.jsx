@@ -1996,10 +1996,10 @@ const ChatBotNew = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: 499,
-          customer_id: userEmail || `guest_${Date.now()}`,
-          customer_email: userEmail || '',
+          customer_id: userEmail ? userEmail.replace(/[^a-zA-Z0-9]/g, '') : `guest${Date.now()}`,
+          customer_email: userEmail || 'guest@ikshan.ai',
           customer_phone: '',
-          return_url: `${window.location.origin}?payment_status=success`,
+          return_url: `${window.location.origin}/api/v1/payments/callback`,
           description: 'Ikshan Root Cause Analysis — Premium Deep Dive',
           udf1: 'rca_unlock',
           udf2: selectedGoal || ''
@@ -2010,6 +2010,8 @@ const ChatBotNew = () => {
 
       if (data.success && data.payment_links) {
         setPaymentOrderId(data.order_id);
+        // Save order_id before redirect so we can verify on return
+        localStorage.setItem('ikshan-pending-order', data.order_id);
         // Redirect to JusPay payment page
         const paymentUrl = data.payment_links.web || data.payment_links.mobile || Object.values(data.payment_links)[0];
         if (paymentUrl) {
@@ -2038,10 +2040,13 @@ const ChatBotNew = () => {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const paymentStatus = urlParams.get('payment_status');
-    const orderId = urlParams.get('order_id');
+    const urlOrderId = urlParams.get('order_id');
+    // Also check localStorage for pending order (handles HDFC redirecting to a different domain)
+    const pendingOrderId = localStorage.getItem('ikshan-pending-order');
+    const orderId = urlOrderId || pendingOrderId;
 
-    if (paymentStatus === 'success' && orderId) {
-      // Verify payment server-side
+    // Only verify if JusPay actually returned success status
+    if (orderId && paymentStatus === 'success') {
       const verifyPayment = async () => {
         try {
           const res = await fetch(apiUrl(`/api/v1/payments/status/${orderId}`));
@@ -2049,6 +2054,7 @@ const ChatBotNew = () => {
           if (data.success && (data.status === 'CHARGED' || data.status === 'AUTO_REFUND')) {
             setPaymentVerified(true);
             localStorage.setItem('ikshan-rca-paid', 'true');
+            localStorage.removeItem('ikshan-pending-order');
             setMessages(prev => [...prev, {
               id: getNextMessageId(),
               text: `✅ **Payment Successful!**\n\nYou now have full access to Root Cause Analysis. Click **Launch Root Cause Analysis** below any solution to start your deep dive.`,
@@ -2056,14 +2062,20 @@ const ChatBotNew = () => {
               timestamp: new Date(),
               showFinalActions: true
             }]);
+          } else {
+            // Payment not completed — clean up pending order
+            localStorage.removeItem('ikshan-pending-order');
           }
         } catch (err) {
           console.error('Payment verification failed:', err);
         }
-        // Clean URL params
         window.history.replaceState({}, '', window.location.pathname);
       };
       verifyPayment();
+    } else if (orderId && paymentStatus && paymentStatus !== 'success') {
+      // Payment failed/cancelled — clean up
+      localStorage.removeItem('ikshan-pending-order');
+      window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
 
@@ -3151,7 +3163,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                                        </button>
                                     )}
                                     {/* Launch RCA Button - Only show if paid */}
-                                    {selectedCategory && selectedGoal === 'lead-generation' && paymentVerified && (
+                                    {selectedCategory && paymentVerified && (
                                        <button
                                          onClick={() => handleLaunchRCA(message.userRequirement || selectedCategory)}
                                          className="action-btn rca"
@@ -3161,8 +3173,8 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                                     )}
                                 </div>
 
-                                {/* Payment Card — Unlock RCA (only show if NOT paid and RCA is relevant) */}
-                                {selectedCategory && selectedGoal === 'lead-generation' && !paymentVerified && (
+                                {/* Payment Card — Unlock RCA (only show if NOT paid) */}
+                                {selectedCategory && !paymentVerified && (
                                     <div className="payment-card">
                                         <div className="payment-card-badge">
                                             <Lock size={12}/> Premium

@@ -867,10 +867,10 @@ const ChatBotNewMobile = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: 499,
-          customer_id: userEmail || `guest_${Date.now()}`,
-          customer_email: userEmail || '',
+          customer_id: userEmail ? userEmail.replace(/[^a-zA-Z0-9]/g, '') : `guest${Date.now()}`,
+          customer_email: userEmail || 'guest@ikshan.ai',
           customer_phone: '',
-          return_url: `${window.location.origin}?payment_status=success`,
+          return_url: `${window.location.origin}/api/v1/payments/callback`,
           description: 'Ikshan Root Cause Analysis — Premium Deep Dive',
           udf1: 'rca_unlock',
           udf2: selectedGoal || ''
@@ -881,6 +881,7 @@ const ChatBotNewMobile = () => {
 
       if (data.success && data.payment_links) {
         setPaymentOrderId(data.order_id);
+        localStorage.setItem('ikshan-pending-order', data.order_id);
         const paymentUrl = data.payment_links.web || data.payment_links.mobile || Object.values(data.payment_links)[0];
         if (paymentUrl) {
           window.location.href = paymentUrl;
@@ -908,9 +909,12 @@ const ChatBotNewMobile = () => {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const paymentStatus = urlParams.get('payment_status');
-    const orderId = urlParams.get('order_id');
+    const urlOrderId = urlParams.get('order_id');
+    const pendingOrderId = localStorage.getItem('ikshan-pending-order');
+    const orderId = urlOrderId || pendingOrderId;
 
-    if (paymentStatus === 'success' && orderId) {
+    // Only verify if JusPay actually returned success status
+    if (orderId && paymentStatus === 'success') {
       const verifyPayment = async () => {
         try {
           const res = await fetch(apiUrl(`/api/v1/payments/status/${orderId}`));
@@ -918,6 +922,7 @@ const ChatBotNewMobile = () => {
           if (data.success && (data.status === 'CHARGED' || data.status === 'AUTO_REFUND')) {
             setPaymentVerified(true);
             localStorage.setItem('ikshan-rca-paid', 'true');
+            localStorage.removeItem('ikshan-pending-order');
             setMessages(prev => [...prev, {
               id: getNextMessageId(),
               text: `✅ **Payment Successful!**\n\nYou now have full access to Root Cause Analysis.`,
@@ -925,6 +930,9 @@ const ChatBotNewMobile = () => {
               timestamp: new Date(),
               showFinalActions: true
             }]);
+          } else {
+            // Payment not completed — clean up pending order
+            localStorage.removeItem('ikshan-pending-order');
           }
         } catch (err) {
           console.error('Payment verification failed:', err);
@@ -932,6 +940,10 @@ const ChatBotNewMobile = () => {
         window.history.replaceState({}, '', window.location.pathname);
       };
       verifyPayment();
+    } else if (orderId && paymentStatus && paymentStatus !== 'success') {
+      // Payment failed/cancelled — clean up
+      localStorage.removeItem('ikshan-pending-order');
+      window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
 
