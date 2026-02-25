@@ -1817,20 +1817,11 @@ const ChatBotNew = ({ onNavigate }) => {
       setCurrentDynamicQIndex(nextIndex);
 
       if (userEmail) {
-        // Already signed in — go straight to recommendations
+        // Go straight to recommendations (auth gate disabled)
         await showPersonalizedRecommendations();
       } else {
-        // Show auth gate in chat
-        pendingAuthActionRef.current = 'recommendations';
-        const authMsg = {
-          id: getNextMessageId(),
-          text: `Great — your diagnostic is complete!\n\nSign in to unlock your **personalized AI tool recommendations**.`,
-          sender: 'bot',
-          timestamp: new Date(),
-          showAuthGate: true,
-        };
-        setMessages(prev => [...prev, authMsg]);
-        setFlowStage('auth-gate');
+        // Skip auth gate — go directly to recommendations
+        await showPersonalizedRecommendations();
       }
     }
   };

@@ -1211,21 +1211,8 @@ const ChatBotNewMobile = ({ onNavigate }) => {
     if (currentDynamicQIndex < dynamicQuestions.length - 1) {
       setCurrentDynamicQIndex(currentDynamicQIndex + 1);
     } else {
-      // All dynamic questions answered — gate behind auth
-      if (userEmail) {
-        await showPersonalizedRecommendations();
-      } else {
-        pendingAuthActionRef.current = 'recommendations';
-        const authMsg = {
-          id: getNextMessageId(),
-          text: `Great \u2014 your diagnostic is complete!\n\nSign in to unlock your **personalized AI tool recommendations**.`,
-          sender: 'bot',
-          timestamp: new Date(),
-          showAuthGate: true,
-        };
-        setMessages(prev => [...prev, authMsg]);
-        setFlowStage('auth-gate');
-      }
+      // All dynamic questions answered — go straight to recommendations
+      await showPersonalizedRecommendations();
     }
   };
 
