@@ -1179,6 +1179,22 @@ const ChatBotNewMobile = ({ onNavigate }) => {
           setCurrentDynamicQIndex(0);
           setDynamicAnswers({});
           setPersonaLoaded(data.persona_loaded);
+
+          // Add first question as a bot message (same as desktop)
+          const firstQ = data.questions[0];
+          const sectionLabel = firstQ.section_label || 'Diagnostic';
+          const taskMatched = data.task_matched || task;
+          const botMsg = {
+            id: getNextMessageId(),
+            text: `**${sectionLabel}** for *${taskMatched}*\n\n${firstQ.question}`,
+            sender: 'bot',
+            timestamp: new Date(),
+            diagnosticOptions: firstQ.options,
+            sectionIndex: 0,
+            sectionKey: firstQ.section,
+            allowsFreeText: firstQ.allows_free_text !== false,
+          };
+          setMessages(prev => [...prev, botMsg]);
           setFlowStage('dynamic-questions');
           setIsTyping(false);
           return;
@@ -1200,6 +1216,14 @@ const ChatBotNewMobile = ({ onNavigate }) => {
     setDynamicAnswers(newAnswers);
     setDynamicFreeText('');
 
+    // Add user's answer as a chat message
+    const userMsg = {
+      id: getNextMessageId(),
+      text: answer,
+      sender: 'user',
+      timestamp: new Date()
+    };
+
     // Record answer in backend session
     try {
       const sid = getSessionId();
@@ -1218,11 +1242,29 @@ const ChatBotNewMobile = ({ onNavigate }) => {
       console.log('Session tracking: dynamic answer', e);
     }
 
-    // Move to next question or get recommendations
-    if (currentDynamicQIndex < dynamicQuestions.length - 1) {
-      setCurrentDynamicQIndex(currentDynamicQIndex + 1);
+    const nextIndex = currentDynamicQIndex + 1;
+
+    if (nextIndex < dynamicQuestions.length) {
+      // Add next question as bot message
+      const nextQ = dynamicQuestions[nextIndex];
+      const sectionLabel = nextQ.section_label || 'Diagnostic';
+      const botMsg = {
+        id: getNextMessageId(),
+        text: `**${sectionLabel}**\n\n${nextQ.question}`,
+        sender: 'bot',
+        timestamp: new Date(),
+        diagnosticOptions: nextQ.options,
+        sectionIndex: nextIndex,
+        sectionKey: nextQ.section,
+        allowsFreeText: nextQ.allows_free_text !== false,
+      };
+      setMessages(prev => [...prev, userMsg, botMsg]);
+      setCurrentDynamicQIndex(nextIndex);
     } else {
       // All dynamic questions answered — gate behind auth
+      setMessages(prev => [...prev, userMsg]);
+      setCurrentDynamicQIndex(nextIndex);
+
       if (userEmail) {
         await showPersonalizedRecommendations();
       } else {
