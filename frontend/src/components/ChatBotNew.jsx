@@ -3513,7 +3513,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                             </button>
                           )}
                           {/* Launch RCA Button - Only show if paid */}
-                          {selectedCategory && selectedGoal === 'lead-generation' && paymentVerified && (
+                          {selectedCategory && paymentVerified && (
                             <button
                               onClick={() => handleLaunchRCA(message.userRequirement || selectedCategory)}
                               className="action-btn rca"
@@ -3524,7 +3524,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                         </div>
 
                         {/* Payment Card — Unlock RCA (only show if NOT paid and RCA is relevant) */}
-                        {selectedCategory && selectedGoal === 'lead-generation' && !paymentVerified && (
+                        {selectedCategory && !paymentVerified && (
                           <div className="payment-card">
                             <div className="payment-card-badge">
                               <Lock size={12} /> Premium
