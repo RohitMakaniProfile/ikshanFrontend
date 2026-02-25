@@ -2535,7 +2535,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                 {/* Icon removed */}
                 <div className="hero-badge">AI Business Intelligence Platform</div>
                 <h1>Scale Your Business with AI Agents —<span className="hero-highlight"> starting today</span></h1>
-                <p>Tell us your biggest business challenge — get a personalized AI action plan in 60 seconds</p>
+                <p>Tell us your business challenge — get Depth Action Plan in 60 seconds and much more.</p>
                 <div className="suggestions-grid">
                   {outcomeOptions.map((outcome, index) => (
                     <div
