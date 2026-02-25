@@ -503,12 +503,12 @@ const IdentityForm = ({ onSubmit }) => {
 };
 
 const MOBILE_PRODUCTS = [
-  { icon: ShoppingCart, name: 'Ecom Listing SEO' },
-  { icon: TrendingUp, name: 'Learn from Competitors' },
-  { icon: Users, name: 'B2B Lead Gen' },
-  { icon: Youtube, name: 'Youtube Helper' },
-  { icon: Sparkles, name: 'AI Team' },
-  { icon: FileText, name: 'Content Creator' },
+  { icon: ShoppingCart, name: 'Ecom Listing SEO', subtitle: 'Improve 30-40% Revenue' },
+  { icon: TrendingUp, name: 'Learn from Competitors', subtitle: 'Best Growth Hacks' },
+  { icon: Users, name: 'B2B Lead Gen', subtitle: 'Reddit & LinkedIn Hot Leads' },
+  { icon: Youtube, name: 'Youtube Helper', subtitle: 'Script + Thumbnail + Keywords' },
+  { icon: Sparkles, name: 'AI Team', subtitle: 'Marketing / Ops / HR etc' },
+  { icon: FileText, name: 'Content Creator', subtitle: 'SEO / Insta / Blogs / LinkedIn' },
 ];
 
 const ChatBotNewMobile = ({ onNavigate }) => {
@@ -2508,8 +2508,13 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                         setShowProductDropdown(false);
                       }}
                     >
-                      <Icon size={16} />
-                      <span>{product.name}</span>
+                      <div className="product-dropdown-icon">
+                        <Icon size={15} />
+                      </div>
+                      <div className="product-dropdown-text">
+                        <span className="product-dropdown-name">{product.name}</span>
+                        {product.subtitle && <span className="product-dropdown-subtitle">{product.subtitle}</span>}
+                      </div>
                     </div>
                   );
                 })}

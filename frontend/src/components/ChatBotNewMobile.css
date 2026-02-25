@@ -147,11 +147,8 @@
 .product-dropdown-item {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.7rem 1rem;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--ikshan-text-secondary);
+  gap: 0.65rem;
+  padding: 0.65rem 1rem;
   cursor: pointer;
   transition: background 0.15s ease;
   border-bottom: 1px solid var(--ikshan-border);
@@ -163,13 +160,65 @@
 
 .product-dropdown-item:hover {
   background-color: #ede9fe;
+}
+
+.product-dropdown-item:hover .product-dropdown-name {
+  color: var(--ikshan-purple);
+}
+
+.product-dropdown-item:hover .product-dropdown-icon {
+  background: rgba(109, 40, 217, 0.15);
   color: var(--ikshan-purple);
 }
 
 .product-dropdown-item.active {
   background-color: #f5f3ff;
+}
+
+.product-dropdown-item.active .product-dropdown-name {
   color: var(--ikshan-purple);
   font-weight: 600;
+}
+
+.product-dropdown-item.active .product-dropdown-icon {
+  background: rgba(109, 40, 217, 0.12);
+  color: var(--ikshan-purple);
+}
+
+.product-dropdown-icon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(109, 40, 217, 0.07);
+  border-radius: 7px;
+  color: var(--ikshan-text-secondary);
+  transition: background 0.15s, color 0.15s;
+}
+
+.product-dropdown-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.product-dropdown-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ikshan-text-primary);
+  line-height: 1.2;
+  transition: color 0.15s;
+}
+
+.product-dropdown-subtitle {
+  font-size: 0.68rem;
+  color: var(--ikshan-text-secondary);
+  opacity: 0.75;
+  line-height: 1.2;
 }
 
 .header-actions {
