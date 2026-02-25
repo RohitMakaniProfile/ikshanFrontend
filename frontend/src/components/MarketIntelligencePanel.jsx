@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { apiUrl } from '../api/config';
 import { 
   Search, 
   Globe, 
@@ -107,8 +106,9 @@ const MarketIntelligencePanel = () => {
         }
       }, 3000);
 
-      // Call FastAPI backend (same base as rest of app; add /api/market-intelligence to backend if needed)
-      const response = await fetch(apiUrl('/api/market-intelligence'), {
+      // Call the backend API instead of importing Node.js modules
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const response = await fetch(`${apiUrl}/api/market-intelligence`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

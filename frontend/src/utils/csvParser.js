@@ -1,15 +1,13 @@
-import { apiUrl } from '../api/config';
-
 /**
- * Fetches company data from backend API (FastAPI — fetches from Google Sheet)
+ * Fetches company data from backend API (which fetches from Google Sheet)
  * @param {string} domain - Domain ID to fetch the correct sheet tab
  * @returns {Promise<Array>} Array of company objects
  */
 export async function fetchCompaniesCSV(domain) {
   try {
     const url = domain
-      ? apiUrl(`/api/companies?domain=${encodeURIComponent(domain)}`)
-      : apiUrl('/api/companies');
+      ? `/api/companies?domain=${encodeURIComponent(domain)}`
+      : '/api/companies';
 
     const response = await fetch(url);
 

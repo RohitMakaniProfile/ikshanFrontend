@@ -1569,3 +1569,201 @@
 [data-theme="dark"] .input-container textarea::placeholder {
   color: var(--ikshan-text-secondary);
 }
+
+/* ── Diagnostic Section Options (in-chat) ──────────────────── */
+
+.diagnostic-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  max-width: 100%;
+}
+
+.diagnostic-option-btn {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  background: var(--ikshan-chat-bubble-user, #f3f4f6);
+  border: 1px solid var(--ikshan-border, #e5e7eb);
+  border-radius: 0.75rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--ikshan-text-primary, #111827);
+  line-height: 1.45;
+  transition: all 0.2s ease;
+  opacity: 0;
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.diagnostic-option-btn:hover {
+  background: var(--ikshan-purple-bg, #f3e8ff);
+  border-color: var(--ikshan-purple, #7c3aed);
+  transform: translateX(4px);
+}
+
+.diagnostic-option-btn:active {
+  transform: translateX(4px) scale(0.98);
+}
+
+.diagnostic-free-input {
+  flex: 1;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--ikshan-border, #e5e7eb);
+  border-radius: 0.75rem;
+  font-size: 0.9rem;
+  outline: none;
+  background: var(--ikshan-chat-bubble-user, #f9fafb);
+  color: var(--ikshan-text-primary, #111827);
+  transition: border-color 0.2s ease;
+}
+
+.diagnostic-free-input:focus {
+  border-color: var(--ikshan-purple, #7c3aed);
+}
+
+.diagnostic-free-submit {
+  padding: 0.65rem 1.1rem;
+  background: var(--ikshan-purple, #7c3aed);
+  color: white;
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.15s ease;
+}
+
+.diagnostic-free-submit:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+}
+
+.diagnostic-free-submit:not(:disabled):hover {
+  background: var(--ikshan-purple-dark, #6d28d9);
+}
+
+/* Dark mode */
+[data-theme="dark"] .diagnostic-option-btn {
+  background: var(--ikshan-surface, #1f2937);
+  border-color: var(--ikshan-border, #374151);
+  color: var(--ikshan-text-primary, #f3f4f6);
+}
+
+[data-theme="dark"] .diagnostic-option-btn:hover {
+  background: rgba(124, 58, 237, 0.15);
+  border-color: var(--ikshan-purple, #7c3aed);
+}
+
+[data-theme="dark"] .diagnostic-free-input {
+  background: var(--ikshan-surface, #1f2937);
+  border-color: var(--ikshan-border, #374151);
+  color: var(--ikshan-text-primary, #f3f4f6);
+}
+
+/* ── Auth Gate Card (pre-recommendations) ─────────────────── */
+
+.auth-gate-card {
+  margin-top: 1.25rem;
+  padding: 1.75rem 1.5rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fafaff 0%, #f0f2ff 50%, #eef4ff 100%);
+  border: 1px solid rgba(124, 58, 237, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  animation: fadeIn 0.4s ease;
+}
+
+.auth-gate-google-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 1.75rem;
+  background: #ffffff;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.93rem;
+  font-weight: 500;
+  font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #3c4043;
+  transition: box-shadow 0.2s ease, background 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  letter-spacing: 0.01em;
+}
+
+.auth-gate-google-btn:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: #f8f9fa;
+}
+
+.auth-gate-google-btn:active {
+  background: #f1f3f4;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.auth-gate-google-btn svg {
+  flex-shrink: 0;
+}
+
+.auth-gate-skip-btn {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0.3rem 0.5rem;
+  transition: color 0.2s ease;
+  letter-spacing: 0.01em;
+}
+
+.auth-gate-skip-btn:hover {
+  color: #6b7280;
+}
+
+.auth-gate-signed-in {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  color: #374151;
+}
+
+.auth-gate-signed-in strong {
+  color: #111827;
+}
+
+/* Dark mode */
+[data-theme="dark"] .auth-gate-card {
+  background: linear-gradient(135deg, #1a1a2e 0%, #1e1b3a 50%, #1a1e36 100%);
+  border-color: rgba(124, 58, 237, 0.18);
+}
+
+[data-theme="dark"] .auth-gate-google-btn {
+  background: #2d2d3d;
+  border-color: #444;
+  color: #e4e4e7;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .auth-gate-google-btn:hover {
+  background: #353548;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .auth-gate-skip-btn {
+  color: #6b7280;
+}
+
+[data-theme="dark"] .auth-gate-skip-btn:hover {
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .auth-gate-signed-in {
+  color: #d1d5db;
+}
+
+[data-theme="dark"] .auth-gate-signed-in strong {
+  color: #f3f4f6;
+}

@@ -3,7 +3,6 @@ import { Send, Bot, User, Mic, MicOff, Package, Box, Gift, ArrowLeft, Plus, Mess
 import ReactMarkdown from 'react-markdown';
 import './ChatBotNewMobile.css';
 import { formatCompaniesForDisplay, analyzeMarketGaps } from '../utils/csvParser';
-import { apiUrl } from '../api/config';
 
 // Generate unique message IDs to prevent React key conflicts
 const generateUniqueId = () => `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -108,9 +107,9 @@ const CUSTOM_GPTS_DATA = {
 const getRelevantExtensions = (category, goal) => {
   const categoryLower = (category || '').toLowerCase();
   const goalLower = (goal || '').toLowerCase();
-  
+
   let extensions = [];
-  
+
   if (categoryLower.includes('social') || categoryLower.includes('content') || categoryLower.includes('post')) {
     extensions = [...(CHROME_EXTENSIONS_DATA['social-media'] || [])];
   }
@@ -135,7 +134,7 @@ const getRelevantExtensions = (category, goal) => {
   if (categoryLower.includes('support') || categoryLower.includes('ticket') || categoryLower.includes('chat')) {
     extensions = [...extensions, ...(CHROME_EXTENSIONS_DATA['support'] || [])];
   }
-  
+
   // Deduplicate and limit
   const unique = [...new Map(extensions.map(e => [e.name, e])).values()];
   return unique.slice(0, 4);
@@ -146,9 +145,9 @@ const getRelevantGPTs = (category, goal, role) => {
   const categoryLower = (category || '').toLowerCase();
   const goalLower = (goal || '').toLowerCase();
   const roleLower = (role || '').toLowerCase();
-  
+
   let gpts = [];
-  
+
   if (categoryLower.includes('content') || categoryLower.includes('social') || categoryLower.includes('video')) {
     gpts = [...(CUSTOM_GPTS_DATA['content-creation'] || [])];
   }
@@ -176,7 +175,7 @@ const getRelevantGPTs = (category, goal, role) => {
   if (goalLower.includes('personal') || categoryLower.includes('plan') || categoryLower.includes('learning')) {
     gpts = [...gpts, ...(CUSTOM_GPTS_DATA['personal-productivity'] || [])];
   }
-  
+
   // Deduplicate and limit
   const unique = [...new Map(gpts.map(g => [g.name, g])).values()];
   return unique.slice(0, 3);
@@ -184,11 +183,11 @@ const getRelevantGPTs = (category, goal, role) => {
 
 // Generate immediate action prompt based on context
 const generateImmediatePrompt = (goal, role, category, requirement) => {
-  const goalText = goal === 'lead-generation' ? 'generate more leads' : 
-                   goal === 'sales-retention' ? 'improve sales and retention' :
-                   goal === 'save-time' ? 'save time and automate' :
-                   goal === 'business-strategy' ? 'make better business decisions' : 'improve and grow';
-  
+  const goalText = goal === 'lead-generation' ? 'generate more leads' :
+    goal === 'sales-retention' ? 'improve sales and retention' :
+      goal === 'save-time' ? 'save time and automate' :
+        goal === 'business-strategy' ? 'make better business decisions' : 'improve and grow';
+
   return `Act as my expert AI consultant. I need to ${goalText}.
 
 **My Context:**
@@ -468,7 +467,7 @@ const IdentityForm = ({ onSubmit }) => {
   };
 
   return (
-    <div style={{width: '100%'}}>
+    <div style={{ width: '100%' }}>
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <input
@@ -479,7 +478,7 @@ const IdentityForm = ({ onSubmit }) => {
               setName(e.target.value);
               setError('');
             }}
-            style={{width: '100%', padding:'0.75rem', border:'1px solid #e5e7eb', borderRadius:'0.5rem', marginBottom:'0.5rem'}}
+            style={{ width: '100%', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', marginBottom: '0.5rem' }}
           />
         </div>
         <div className="form-group">
@@ -491,11 +490,11 @@ const IdentityForm = ({ onSubmit }) => {
               setEmail(e.target.value);
               setError('');
             }}
-             style={{width: '100%', padding:'0.75rem', border:'1px solid #e5e7eb', borderRadius:'0.5rem'}}
+            style={{ width: '100%', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}
           />
         </div>
-        {error && <div style={{color:'#ef4444', fontSize:'0.85rem', marginBottom:'1rem'}}>{error}</div>}
-        <button type="submit" style={{width:'100%', padding:'0.75rem', background:'var(--ikshan-purple)', color:'white', border:'none', borderRadius:'0.5rem', fontWeight:600, cursor:'pointer'}}>
+        {error && <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</div>}
+        <button type="submit" style={{ width: '100%', padding: '0.75rem', background: 'var(--ikshan-purple)', color: 'white', border: 'none', borderRadius: '0.5rem', fontWeight: 600, cursor: 'pointer' }}>
           Continue →
         </button>
       </form>
@@ -503,7 +502,7 @@ const IdentityForm = ({ onSubmit }) => {
   );
 };
 
-const ChatBotNewMobile = () => {
+const ChatBotNewMobile = ({ onNavigate }) => {
   const [messages, setMessages] = useState([
     {
       id: 'welcome-msg',
@@ -524,6 +523,37 @@ const ChatBotNewMobile = () => {
   const [userName, setUserName] = useState(null);
   const [userEmail, setUserEmail] = useState(null);
   const [flowStage, setFlowStage] = useState('outcome');
+
+  // AI Agent Session State
+  const [sessionId, setSessionId] = useState(null);
+  const sessionIdRef = useRef(null); // ref mirrors state — avoids React batching delays
+  const pendingAuthActionRef = useRef(null); // 'recommendations' when auth-gate is active
+  const [dynamicQuestions, setDynamicQuestions] = useState([]);
+  const [currentDynamicQIndex, setCurrentDynamicQIndex] = useState(0);
+  const [dynamicAnswers, setDynamicAnswers] = useState({});
+  const [personaLoaded, setPersonaLoaded] = useState(null);
+  const [dynamicFreeText, setDynamicFreeText] = useState('');
+  const API_BASE = import.meta.env.VITE_API_URL || '';
+
+  // Helper: always get the latest session id (ref > state avoid React async gap)
+  const getSessionId = () => sessionIdRef.current;
+
+  // Helper: ensure a backend session exists, creating one if needed
+  const ensureSession = async () => {
+    let sid = sessionIdRef.current;
+    if (sid) return sid;
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/agent/session`, { method: 'POST' });
+      const data = await res.json();
+      sid = data.session_id;
+      sessionIdRef.current = sid;
+      setSessionId(sid);
+      return sid;
+    } catch (e) {
+      console.error('Failed to create session:', e);
+      return null;
+    }
+  };
 
   const [businessContext, setBusinessContext] = useState({
     businessType: null,
@@ -552,7 +582,7 @@ const ChatBotNewMobile = () => {
   const [showChatHistory, setShowChatHistory] = useState(false);
   const [speechError, setSpeechError] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  
+
   // Dashboard view state
   const [showDashboard, setShowDashboard] = useState(false);
   const [dashboardData, setDashboardData] = useState({
@@ -565,7 +595,7 @@ const ChatBotNewMobile = () => {
     immediatePrompt: ''
   });
   const [copiedPrompt, setCopiedPrompt] = useState(false);
-  
+
   // Load chat history from localStorage on mount
   const [chatHistory, setChatHistory] = useState(() => {
     const saved = getFromStorage(STORAGE_KEYS.CHAT_HISTORY, []);
@@ -579,14 +609,14 @@ const ChatBotNewMobile = () => {
       }))
     }));
   });
-  
+
   // Persist chat history to localStorage whenever it changes
   useEffect(() => {
     if (chatHistory.length > 0) {
       saveToStorage(STORAGE_KEYS.CHAT_HISTORY, chatHistory);
     }
   }, [chatHistory]);
-  
+
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -829,6 +859,20 @@ const ChatBotNewMobile = () => {
     setUserEmail(payload.email);
     setShowAuthModal(false);
 
+    // If auth-gate before recommendations, proceed directly
+    if (pendingAuthActionRef.current === 'recommendations') {
+      pendingAuthActionRef.current = null;
+      const welcomeMsg = {
+        id: getNextMessageId(),
+        text: `Welcome, ${payload.name}! Generating your personalized recommendations...`,
+        sender: 'bot',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, welcomeMsg]);
+      showPersonalizedRecommendations();
+      return;
+    }
+
     setSelectedDomain(null);
     setSelectedSubDomain(null);
     setUserRole(null);
@@ -862,15 +906,15 @@ const ChatBotNewMobile = () => {
   const handlePayForRCA = async () => {
     setPaymentLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/v1/payments/create-order'), {
+      const response = await fetch('/api/v1/payments/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: 499,
-          customer_id: userEmail ? userEmail.replace(/[^a-zA-Z0-9]/g, '') : `guest${Date.now()}`,
-          customer_email: userEmail || 'guest@ikshan.ai',
+          customer_id: userEmail || `guest_${Date.now()}`,
+          customer_email: userEmail || '',
           customer_phone: '',
-          return_url: `${window.location.origin}/api/v1/payments/callback`,
+          return_url: `${window.location.origin}?payment_status=success`,
           description: 'Ikshan Root Cause Analysis — Premium Deep Dive',
           udf1: 'rca_unlock',
           udf2: selectedGoal || ''
@@ -881,7 +925,6 @@ const ChatBotNewMobile = () => {
 
       if (data.success && data.payment_links) {
         setPaymentOrderId(data.order_id);
-        localStorage.setItem('ikshan-pending-order', data.order_id);
         const paymentUrl = data.payment_links.web || data.payment_links.mobile || Object.values(data.payment_links)[0];
         if (paymentUrl) {
           window.location.href = paymentUrl;
@@ -909,20 +952,16 @@ const ChatBotNewMobile = () => {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const paymentStatus = urlParams.get('payment_status');
-    const urlOrderId = urlParams.get('order_id');
-    const pendingOrderId = localStorage.getItem('ikshan-pending-order');
-    const orderId = urlOrderId || pendingOrderId;
+    const orderId = urlParams.get('order_id');
 
-    // Only verify if JusPay actually returned success status
-    if (orderId && (paymentStatus === 'success' || paymentStatus === 'charged')) {
+    if ((paymentStatus === 'success' || paymentStatus === 'charged') && orderId) {
       const verifyPayment = async () => {
         try {
-          const res = await fetch(apiUrl(`/api/v1/payments/status/${orderId}`));
+          const res = await fetch(`/api/v1/payments/status/${orderId}`);
           const data = await res.json();
           if (data.success && (data.status === 'CHARGED' || data.status === 'AUTO_REFUND')) {
             setPaymentVerified(true);
             localStorage.setItem('ikshan-rca-paid', 'true');
-            localStorage.removeItem('ikshan-pending-order');
             setMessages(prev => [...prev, {
               id: getNextMessageId(),
               text: `✅ **Payment Successful!**\n\nYou now have full access to Root Cause Analysis.`,
@@ -930,9 +969,6 @@ const ChatBotNewMobile = () => {
               timestamp: new Date(),
               showFinalActions: true
             }]);
-          } else {
-            // Payment not completed — clean up pending order
-            localStorage.removeItem('ikshan-pending-order');
           }
         } catch (err) {
           console.error('Payment verification failed:', err);
@@ -940,10 +976,6 @@ const ChatBotNewMobile = () => {
         window.history.replaceState({}, '', window.location.pathname);
       };
       verifyPayment();
-    } else if (orderId && paymentStatus && paymentStatus !== 'success') {
-      // Payment failed/cancelled — clean up
-      localStorage.removeItem('ikshan-pending-order');
-      window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
 
@@ -954,7 +986,7 @@ const ChatBotNewMobile = () => {
       const outcomeLabel = outcomeOptions.find(g => g.id === selectedGoal)?.text || '';
       const chatTitle = outcomeLabel || userMessages[0]?.text?.slice(0, 30) || 'New Chat';
       const lastUserMessage = userMessages[userMessages.length - 1]?.text || '';
-      
+
       const newHistoryItem = {
         id: `chat-${Date.now()}`,
         title: chatTitle,
@@ -963,7 +995,7 @@ const ChatBotNewMobile = () => {
         domain: selectedCategory || 'General',
         messages: [...messages]
       };
-      
+
       setChatHistory(prev => [newHistoryItem, ...prev]);
     }
 
@@ -1003,6 +1035,15 @@ const ChatBotNewMobile = () => {
     });
     setCopiedPrompt(false);
 
+    // Reset AI Agent session state
+    setSessionId(null);
+    sessionIdRef.current = null;
+    setDynamicQuestions([]);
+    setCurrentDynamicQIndex(0);
+    setDynamicAnswers({});
+    setPersonaLoaded(null);
+    setDynamicFreeText('');
+
     // Start fresh with welcome message
     const welcomeMessage = {
       id: getNextMessageId(),
@@ -1015,7 +1056,7 @@ const ChatBotNewMobile = () => {
   };
 
   // Handle outcome selection (Question 1)
-  const handleOutcomeClick = (outcome) => {
+  const handleOutcomeClick = async (outcome) => {
     setSelectedGoal(outcome.id);
 
     const userMessage = {
@@ -1039,11 +1080,25 @@ const ChatBotNewMobile = () => {
     setMessages(prev => [...prev, userMessage, botMessage]);
     setFlowStage('domain');
 
+    // Create session and record outcome
+    try {
+      const sid = await ensureSession();
+      if (sid) {
+        await fetch(`${API_BASE}/api/v1/agent/session/outcome`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sid, outcome: outcome.id, outcome_label: outcome.text })
+        });
+      }
+    } catch (e) {
+      console.log('Session tracking: outcome', e);
+    }
+
     saveToSheet(`Selected Outcome: ${outcome.text}`, '', '', '');
   };
 
   // Handle domain selection (Question 2)
-  const handleDomainClickNew = (domain) => {
+  const handleDomainClickNew = async (domain) => {
     setSelectedDomainName(domain);
 
     const userMessage = {
@@ -1066,11 +1121,25 @@ const ChatBotNewMobile = () => {
     };
     setMessages(prev => [...prev, userMessage, botMessage]);
 
+    // Record domain in session
+    try {
+      const sid = getSessionId();
+      if (sid) {
+        await fetch(`${API_BASE}/api/v1/agent/session/domain`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sid, domain })
+        });
+      }
+    } catch (e) {
+      console.log('Session tracking: domain', e);
+    }
+
     saveToSheet(`Selected Domain: ${domain}`, '', '', '');
   };
 
-  // Handle task selection (Question 3) - Go directly to solution
-  const handleTaskClick = (task) => {
+  // Handle task selection (Question 3) - Now triggers dynamic questions from AI agent
+  const handleTaskClick = async (task) => {
     setSelectedCategory(task);
 
     const userMessage = {
@@ -1079,12 +1148,192 @@ const ChatBotNewMobile = () => {
       sender: 'user',
       timestamp: new Date()
     };
-
     setMessages(prev => [...prev, userMessage]);
     saveToSheet(`Selected Task: ${task}`, '', '', '');
-    
-    // Directly show solution
+
+    // Always try backend — ensure session exists first
+    setIsTyping(true);
+    try {
+      const sid = await ensureSession();
+      if (sid) {
+        const res = await fetch(`${API_BASE}/api/v1/agent/session/task`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sid, task })
+        });
+        const data = await res.json();
+
+        if (data.questions && data.questions.length > 0) {
+          setDynamicQuestions(data.questions);
+          setCurrentDynamicQIndex(0);
+          setDynamicAnswers({});
+          setPersonaLoaded(data.persona_loaded);
+          setFlowStage('dynamic-questions');
+          setIsTyping(false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.log('Dynamic question generation failed, falling back', e);
+    }
+    setIsTyping(false);
+
+    // Fallback: directly show solution stack if backend call fails
     showSolutionStack(task);
+  };
+
+  // Handle dynamic question answer (option click)
+  const handleDynamicAnswer = async (answer) => {
+    const currentQ = dynamicQuestions[currentDynamicQIndex];
+    const newAnswers = { ...dynamicAnswers, [currentDynamicQIndex]: answer };
+    setDynamicAnswers(newAnswers);
+    setDynamicFreeText('');
+
+    // Record answer in backend session
+    try {
+      const sid = getSessionId();
+      if (sid) {
+        await fetch(`${API_BASE}/api/v1/agent/session/answer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sid,
+            question_index: currentDynamicQIndex,
+            answer: answer
+          })
+        });
+      }
+    } catch (e) {
+      console.log('Session tracking: dynamic answer', e);
+    }
+
+    // Move to next question or get recommendations
+    if (currentDynamicQIndex < dynamicQuestions.length - 1) {
+      setCurrentDynamicQIndex(currentDynamicQIndex + 1);
+    } else {
+      // All dynamic questions answered — gate behind auth
+      if (userEmail) {
+        await showPersonalizedRecommendations();
+      } else {
+        pendingAuthActionRef.current = 'recommendations';
+        const authMsg = {
+          id: getNextMessageId(),
+          text: `Great \u2014 your diagnostic is complete!\n\nSign in to unlock your **personalized AI tool recommendations**.`,
+          sender: 'bot',
+          timestamp: new Date(),
+          showAuthGate: true,
+        };
+        setMessages(prev => [...prev, authMsg]);
+        setFlowStage('auth-gate');
+      }
+    }
+  };
+
+  // Handle free-text submission for dynamic question
+  const handleDynamicFreeTextSubmit = () => {
+    if (dynamicFreeText.trim()) {
+      handleDynamicAnswer(dynamicFreeText.trim());
+    }
+  };
+
+  // Handle "Skip" on auth gate — proceed without signing in
+  const handleSkipAuth = () => {
+    pendingAuthActionRef.current = null;
+    showPersonalizedRecommendations();
+  };
+
+  // Get personalized recommendations from backend
+  const showPersonalizedRecommendations = async () => {
+    setFlowStage('complete');
+    setIsTyping(true);
+
+    try {
+      const sid = getSessionId();
+      const res = await fetch(`${API_BASE}/api/v1/agent/session/recommend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sid })
+      });
+      const data = await res.json();
+
+      const outcomeLabel = outcomeOptions.find(g => g.id === selectedGoal)?.text || selectedGoal;
+      const domainLabel = selectedDomainName || 'General';
+
+      let solutionResponse = `## Personalized Solution Pathways\n\n`;
+      solutionResponse += `Based on your specific situation in **${domainLabel}** — **${selectedCategory}**, here are the tools I recommend for you.\n\n`;
+
+      if (data.summary) {
+        solutionResponse += `> ${data.summary}\n\n`;
+      }
+
+      solutionResponse += `---\n\n`;
+
+      // Section 1: Extensions
+      if (data.extensions && data.extensions.length > 0) {
+        solutionResponse += `## Tools & Extensions\n\n`;
+        data.extensions.forEach((ext) => {
+          const freeTag = ext.free ? 'Free' : 'Paid';
+          solutionResponse += `**${ext.name}** ${freeTag}\n`;
+          solutionResponse += `> ${ext.description}\n`;
+          if (ext.why_recommended) solutionResponse += `> **Why for you:** ${ext.why_recommended}\n`;
+          if (ext.url) solutionResponse += `> [Visit](${ext.url})\n`;
+          solutionResponse += `\n`;
+        });
+        solutionResponse += `---\n\n`;
+      }
+
+      // Section 2: GPTs
+      if (data.gpts && data.gpts.length > 0) {
+        solutionResponse += `## Custom GPTs\n\n`;
+        data.gpts.forEach((gpt) => {
+          solutionResponse += `**${gpt.name}**${gpt.rating ? ` ⭐${gpt.rating}` : ''}\n`;
+          solutionResponse += `> ${gpt.description}\n`;
+          if (gpt.why_recommended) solutionResponse += `> **Why for you:** ${gpt.why_recommended}\n`;
+          if (gpt.url) solutionResponse += `> [Try it](${gpt.url})\n`;
+          solutionResponse += `\n`;
+        });
+        solutionResponse += `---\n\n`;
+      }
+
+      // Section 3: Companies
+      if (data.companies && data.companies.length > 0) {
+        solutionResponse += `## AI Solution Providers\n\n`;
+        data.companies.forEach((co) => {
+          solutionResponse += `**${co.name}**\n`;
+          solutionResponse += `> ${co.description}\n`;
+          if (co.why_recommended) solutionResponse += `> **Why for you:** ${co.why_recommended}\n`;
+          if (co.url) solutionResponse += `> [Learn more](${co.url})\n`;
+          solutionResponse += `\n`;
+        });
+        solutionResponse += `---\n\n`;
+      }
+
+      solutionResponse += `### What would you like to do next?`;
+
+      const immediatePrompt = generateImmediatePrompt(selectedGoal, domainLabel, selectedCategory, selectedCategory);
+
+      const finalOutput = {
+        id: getNextMessageId(),
+        text: solutionResponse,
+        sender: 'bot',
+        timestamp: new Date(),
+        showFinalActions: true,
+        showCopyPrompt: true,
+        immediatePrompt: immediatePrompt,
+        companies: data.companies || [],
+        extensions: data.extensions || [],
+        customGPTs: data.gpts || [],
+        userRequirement: selectedCategory
+      };
+
+      setMessages(prev => [...prev, finalOutput]);
+      setIsTyping(false);
+    } catch (error) {
+      console.error('Personalized recommendations failed, falling back:', error);
+      setIsTyping(false);
+      // Fallback to original solution stack
+      showSolutionStack(selectedCategory);
+    }
   };
 
   // Handle "Type here" button click - skip category selection
@@ -1123,38 +1372,206 @@ const ChatBotNewMobile = () => {
     // Search for relevant companies from CSV
     let relevantCompanies = [];
     try {
-      const searchResponse = await fetch(apiUrl('/api/search-companies'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          domain: category,
-          subdomain: category,
-          requirement: category,
-          goal: selectedGoal,
-          role: roleLabel, // FIX: Using defined roleLabel
-          userContext: {
+      // Get outcome and domain labels for display
+      const outcomeLabel = outcomeOptions.find(g => g.id === selectedGoal)?.text || selectedGoal;
+      const domainLabel = selectedDomainName || 'General';
+
+      // Search for relevant companies from CSV
+      let relevantCompanies = [];
+      try {
+        const searchResponse = await fetch('/api/search-companies', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            domain: category,
+            subdomain: category,
+            requirement: category,
             goal: selectedGoal,
-            domain: domainLabel,
-            category: category
-          }
-        })
+            role: selectedDomainName,
+            userContext: {
+              goal: selectedGoal,
+              domain: selectedDomainName,
+              category: category
+            }
+          })
+        });
+        const searchData = await searchResponse.json();
+        relevantCompanies = (searchData.companies || []).slice(0, 3);
+      } catch (e) {
+        console.log('Company search failed, using fallback');
+        relevantCompanies = [
+          { name: 'Bardeen', problem: 'Automate any browser workflow with AI', differentiator: 'No-code browser automation' },
+          { name: 'Zapier', problem: 'Connect 5000+ apps without code', differentiator: 'Largest integration library' },
+          { name: 'Make (Integromat)', problem: 'Visual automation builder', differentiator: 'Complex workflow scenarios' }
+        ];
+      }
+
+      // Get relevant Chrome extensions and GPTs
+      let extensions = getRelevantExtensions(category, selectedGoal);
+      let customGPTs = getRelevantGPTs(category, selectedGoal, selectedDomainName);
+
+      // Use fallbacks if empty
+      if (extensions.length === 0) {
+        extensions = [
+          { name: 'Bardeen', description: 'Automate browser tasks with AI', free: true, source: 'Chrome Web Store' },
+          { name: 'Notion Web Clipper', description: 'Save anything instantly', free: true, source: 'Chrome Web Store' },
+          { name: 'Grammarly', description: 'Write better emails & docs', free: true, source: 'Chrome Web Store' }
+        ];
+      }
+
+      if (customGPTs.length === 0) {
+        customGPTs = [
+          { name: 'Task Prioritizer GPT', description: 'Organize your to-dos efficiently', rating: '4.7' },
+          { name: 'Data Analyst GPT', description: 'Analyze data & create charts', rating: '4.9' },
+          { name: 'Automation Expert GPT', description: 'Design smart workflows', rating: '4.7' }
+        ];
+      }
+
+      if (relevantCompanies.length === 0) {
+        relevantCompanies = [
+          { name: 'Bardeen', problem: 'Automate any browser workflow with AI', differentiator: 'No-code browser automation' },
+          { name: 'Zapier', problem: 'Connect 5000+ apps without code', differentiator: 'Largest integration library' },
+          { name: 'Make (Integromat)', problem: 'Visual automation builder', differentiator: 'Complex workflow scenarios' }
+        ];
+      }
+
+      // Generate the immediate action prompt
+      const immediatePrompt = generateImmediatePrompt(selectedGoal, roleLabel, category, category);
+
+      // Build Stage 1 Desired Output Format - Chat Response
+      let solutionResponse = `## Recommended Solution Pathways (Immediate Action)\n\n`;
+      solutionResponse += `I recommend the following solution pathways that you can start implementing immediately, based on your current setup and goals.\n\n`;
+      solutionResponse += `---\n\n`;
+
+      // Section 1: Tools & Extensions (If Google Workspace Is Your Main Stack)
+      solutionResponse += `## If Google Tools / Google Workspace Is Your Main Stack\n\n`;
+      solutionResponse += `If Google Workspace is your primary tool stack, here are some tools and extensions that integrate well and can be implemented quickly.\n\n`;
+      solutionResponse += `### Tools & Extensions\n\n`;
+
+      extensions.slice(0, 3).forEach((ext) => {
+        const freeTag = ext.free ? 'Free' : 'Paid';
+        solutionResponse += `**${ext.name}** ${freeTag}\n`;
+        solutionResponse += `> **Where this helps:** ${ext.description}\n`;
+        solutionResponse += `> **Where to find:** ${ext.source || 'Chrome Web Store / Official Website'}\n\n`;
       });
 
       if (!searchResponse.ok) {
          throw new Error(`Server returned ${searchResponse.status}`);
       }
 
-      const searchData = await searchResponse.json();
-      relevantCompanies = (searchData.companies || []).slice(0, 3);
-    } catch (e) {
-      console.log('Company search failed, using fallback');
-      relevantCompanies = [
-        { name: 'Bardeen', problem: 'Automate any browser workflow with AI', differentiator: 'No-code browser automation' },
-        { name: 'Zapier', problem: 'Connect 5000+ apps without code', differentiator: 'Largest integration library' },
-        { name: 'Make (Integromat)', problem: 'Visual automation builder', differentiator: 'Complex workflow scenarios' }
-      ];
+      // Section 2: Custom GPTs
+      solutionResponse += `## Using Custom GPTs for Task Automation & Decision Support\n\n`;
+      solutionResponse += `You can also leverage Custom GPTs to automate repetitive thinking tasks, research, analysis, and execution support.\n\n`;
+      solutionResponse += `### Custom GPTs\n\n`;
+
+      customGPTs.slice(0, 3).forEach((gpt) => {
+        solutionResponse += `**${gpt.name}** ⭐${gpt.rating}\n`;
+        solutionResponse += `> **What this GPT does:** ${gpt.description}\n\n`;
+      });
+
+      solutionResponse += `---\n\n`;
+
+      // Section 3: AI Companies
+      solutionResponse += `## AI Companies Offering Ready-Made Solutions\n\n`;
+      solutionResponse += `If you are looking for AI-powered tools and well-structured, ready-made solutions, here are companies whose products align with your needs.\n\n`;
+      solutionResponse += `### AI Solution Providers\n\n`;
+
+      relevantCompanies.slice(0, 3).forEach((company) => {
+        solutionResponse += `**${company.name}**\n`;
+        solutionResponse += `> **What they do:** ${company.problem || company.description || 'AI-powered solution for your needs'}\n\n`;
+      });
+
+      solutionResponse += `---\n\n`;
+
+      // Section 4: How to Use This Framework
+      solutionResponse += `### How to Use This Framework\n\n`;
+      solutionResponse += `1. **Start with Google Workspace tools** for quick wins\n`;
+      solutionResponse += `2. **Add Custom GPTs** for intelligence and automation\n`;
+      solutionResponse += `3. **Scale using specialized AI companies** when workflows mature\n\n`;
+
+      solutionResponse += `---\n\n`;
+      solutionResponse += `### What would you like to do next?`;
+
+      const finalOutput = {
+        id: getNextMessageId(),
+        text: solutionResponse,
+        sender: 'bot',
+        timestamp: new Date(),
+        showFinalActions: true,
+        showCopyPrompt: true,
+        immediatePrompt: immediatePrompt,
+        companies: relevantCompanies,
+        extensions: extensions,
+        customGPTs: customGPTs,
+        userRequirement: category
+      };
+
+      setMessages(prev => [...prev, finalOutput]);
+      setIsTyping(false);
+
+      saveToSheet('Solution Stack Generated', `Outcome: ${outcomeLabel}, Domain: ${domainLabel}, Task: ${category}`, category, category);
+    } catch (error) {
+      console.error('Error generating solution stack:', error);
+
+      // Fallback response with Stage 1 format
+      const outcomeLabel = outcomeOptions.find(g => g.id === selectedGoal)?.text || selectedGoal;
+      const domainLabel = selectedDomainName || 'General';
+      const fallbackPrompt = generateImmediatePrompt(selectedGoal, domainLabel, category, category);
+
+      let fallbackResponse = `## 🎯 Recommended Solution Pathways (Immediate Action)\n\n`;
+      fallbackResponse += `I recommend the following solution pathways that you can start implementing immediately.\n\n`;
+      fallbackResponse += `---\n\n`;
+
+      fallbackResponse += `## 🔌 If Google Tools / Google Workspace Is Your Main Stack\n\n`;
+      fallbackResponse += `### Tools & Extensions\n\n`;
+      fallbackResponse += `**🔧 Bardeen** 🆓 Free\n`;
+      fallbackResponse += `> **Where this helps:** Automate browser tasks with AI\n`;
+      fallbackResponse += `> **Where to find:** Chrome Web Store\n\n`;
+      fallbackResponse += `**🔧 Notion Web Clipper** 🆓 Free\n`;
+      fallbackResponse += `> **Where this helps:** Save anything instantly\n`;
+      fallbackResponse += `> **Where to find:** Chrome Web Store\n\n`;
+      fallbackResponse += `**🔧 Grammarly** 🆓 Free\n`;
+      fallbackResponse += `> **Where this helps:** Write better emails & docs\n`;
+      fallbackResponse += `> **Where to find:** Chrome Web Store\n\n`;
+
+      fallbackResponse += `---\n\n`;
+      fallbackResponse += `## 🤖 Using Custom GPTs for Task Automation & Decision Support\n\n`;
+      fallbackResponse += `### Custom GPTs\n\n`;
+      fallbackResponse += `**🧠 Data Analyst GPT** ⭐4.9\n`;
+      fallbackResponse += `> **What this GPT does:** Analyze your data & create charts\n\n`;
+      fallbackResponse += `**🧠 Task Prioritizer GPT** ⭐4.7\n`;
+      fallbackResponse += `> **What this GPT does:** Plan and organize your work\n\n`;
+
+      fallbackResponse += `---\n\n`;
+      fallbackResponse += `## 🚀 AI Companies Offering Ready-Made Solutions\n\n`;
+      fallbackResponse += `### AI Solution Providers\n\n`;
+      fallbackResponse += `**🏢 Bardeen**\n`;
+      fallbackResponse += `> **What they do:** Automate any browser workflow with AI\n\n`;
+      fallbackResponse += `**🏢 Zapier**\n`;
+      fallbackResponse += `> **What they do:** Connect 5000+ apps without code\n\n`;
+
+      fallbackResponse += `---\n\n`;
+      fallbackResponse += `### 📋 How to Use This Framework\n\n`;
+      fallbackResponse += `1. **Start with Google Workspace tools** for quick wins\n`;
+      fallbackResponse += `2. **Add Custom GPTs** for intelligence and automation\n`;
+      fallbackResponse += `3. **Scale using specialized AI companies** when workflows mature\n\n`;
+      fallbackResponse += `---\n\n### What would you like to do next?`;
+
+      const fallbackOutput = {
+        id: getNextMessageId(),
+        text: fallbackResponse,
+        sender: 'bot',
+        timestamp: new Date(),
+        showFinalActions: true,
+        showCopyPrompt: true,
+        immediatePrompt: fallbackPrompt,
+        userRequirement: category
+      };
+
+      setMessages(prev => [...prev, fallbackOutput]);
+      setIsTyping(false);
     }
 
     // Get relevant Chrome extensions and GPTs
@@ -1291,7 +1708,7 @@ const ChatBotNewMobile = () => {
   // Handle explore implementation - switch to chat mode
   const handleExploreImplementation = () => {
     setShowDashboard(false);
-    
+
     // Add context message to chat
     const contextMessage = {
       id: getNextMessageId(),
@@ -1391,7 +1808,7 @@ const ChatBotNewMobile = () => {
 
   const saveToSheet = async (userMessage, botResponse, domain = '', subdomain = '') => {
     try {
-      await fetch(apiUrl('/api/save-idea'), {
+      await fetch('/api/save-idea', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1577,9 +1994,9 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
         // Get outcome and domain labels for display
         const outcomeLabel = outcomeOptions.find(g => g.id === selectedGoal)?.text || selectedGoal;
         const domainLabel = selectedDomainName || 'General';
-        
+
         // Search for relevant companies from CSV
-        const searchResponse = await fetch(apiUrl('/api/search-companies'), {
+        const searchResponse = await fetch('/api/search-companies', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1600,11 +2017,11 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
 
         const searchData = await searchResponse.json();
         let relevantCompanies = (searchData.companies || []).slice(0, 3);
-        
+
         // Get relevant Chrome extensions and GPTs
         let extensions = getRelevantExtensions(selectedCategory, selectedGoal);
         let customGPTs = getRelevantGPTs(selectedCategory, selectedGoal, selectedDomainName);
-        
+
         // Use fallbacks if empty
         if (extensions.length === 0) {
           extensions = [
@@ -1613,7 +2030,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
             { name: 'Grammarly', description: 'Write better emails & docs', free: true, source: 'Chrome Web Store' }
           ];
         }
-        
+
         if (customGPTs.length === 0) {
           customGPTs = [
             { name: 'Task Prioritizer GPT', description: 'Organize your to-dos efficiently', rating: '4.7' },
@@ -1621,7 +2038,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
             { name: 'Automation Expert GPT', description: 'Design smart workflows', rating: '4.7' }
           ];
         }
-        
+
         if (relevantCompanies.length === 0) {
           relevantCompanies = [
             { name: 'Bardeen', problem: 'Automate any browser workflow with AI', differentiator: 'No-code browser automation' },
@@ -1629,7 +2046,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
             { name: 'Make (Integromat)', problem: 'Visual automation builder', differentiator: 'Complex workflow scenarios' }
           ];
         }
-        
+
         // Generate the immediate action prompt
         const immediatePrompt = generateImmediatePrompt(selectedGoal, roleLabel, selectedCategory, requirement);
 
@@ -1642,7 +2059,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
         solutionResponse += `## 🔌 If Google Tools / Google Workspace Is Your Main Stack\n\n`;
         solutionResponse += `If Google Workspace is your primary tool stack, here are some tools and extensions that integrate well and can be implemented quickly.\n\n`;
         solutionResponse += `### Tools & Extensions\n\n`;
-        
+
         extensions.slice(0, 3).forEach((ext) => {
           const freeTag = ext.free ? '🆓 Free' : '💰 Paid';
           solutionResponse += `**🔧 ${ext.name}** ${freeTag}\n`;
@@ -1656,7 +2073,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
         solutionResponse += `## 🤖 Using Custom GPTs for Task Automation & Decision Support\n\n`;
         solutionResponse += `You can also leverage Custom GPTs to automate repetitive thinking tasks, research, analysis, and execution support.\n\n`;
         solutionResponse += `### Custom GPTs\n\n`;
-        
+
         customGPTs.slice(0, 3).forEach((gpt) => {
           solutionResponse += `**🧠 ${gpt.name}** ⭐${gpt.rating}\n`;
           solutionResponse += `> **What this GPT does:** ${gpt.description}\n\n`;
@@ -1668,7 +2085,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
         solutionResponse += `## 🚀 AI Companies Offering Ready-Made Solutions\n\n`;
         solutionResponse += `If you are looking for AI-powered tools and well-structured, ready-made solutions, here are companies whose products align with your needs.\n\n`;
         solutionResponse += `### AI Solution Providers\n\n`;
-        
+
         relevantCompanies.slice(0, 3).forEach((company) => {
           solutionResponse += `**🏢 ${company.name}**\n`;
           solutionResponse += `> **What they do:** ${company.problem || company.description || 'AI-powered solution for your needs'}\n\n`;
@@ -1681,7 +2098,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
         solutionResponse += `1. **Start with Google Workspace tools** for quick wins\n`;
         solutionResponse += `2. **Add Custom GPTs** for intelligence and automation\n`;
         solutionResponse += `3. **Scale using specialized AI companies** when workflows mature\n\n`;
-        
+
         solutionResponse += `---\n\n`;
         solutionResponse += `### What would you like to do next?`;
 
@@ -1711,11 +2128,11 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
         const outcomeLabel = outcomeOptions.find(g => g.id === selectedGoal)?.text || selectedGoal;
         const domainLabel = selectedDomainName || 'General';
         const fallbackPrompt = generateImmediatePrompt(selectedGoal, domainLabel, selectedCategory, requirement);
-        
+
         let fallbackResponse = `## Recommended Solution Pathways (Immediate Action)\n\n`;
         fallbackResponse += `I recommend the following solution pathways that you can start implementing immediately.\n\n`;
         fallbackResponse += `---\n\n`;
-        
+
         fallbackResponse += `## If Google Tools / Google Workspace Is Your Main Stack\n\n`;
         fallbackResponse += `### Tools & Extensions\n\n`;
         fallbackResponse += `**Bardeen** Free\n`;
@@ -1727,7 +2144,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
         fallbackResponse += `**Grammarly** Free\n`;
         fallbackResponse += `> **Where this helps:** Write better emails & docs\n`;
         fallbackResponse += `> **Where to find:** Chrome Web Store\n\n`;
-        
+
         fallbackResponse += `---\n\n`;
         fallbackResponse += `## Using Custom GPTs for Task Automation & Decision Support\n\n`;
         fallbackResponse += `### Custom GPTs\n\n`;
@@ -1735,7 +2152,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
         fallbackResponse += `> **What this GPT does:** Analyze your data & create charts\n\n`;
         fallbackResponse += `**Task Prioritizer GPT** ⭐4.7\n`;
         fallbackResponse += `> **What this GPT does:** Plan and organize your work\n\n`;
-        
+
         fallbackResponse += `---\n\n`;
         fallbackResponse += `## AI Companies Offering Ready-Made Solutions\n\n`;
         fallbackResponse += `### AI Solution Providers\n\n`;
@@ -1743,7 +2160,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
         fallbackResponse += `> **What they do:** Automate any browser workflow with AI\n\n`;
         fallbackResponse += `**Zapier**\n`;
         fallbackResponse += `> **What they do:** Connect 5000+ apps without code\n\n`;
-        
+
         fallbackResponse += `---\n\n`;
         fallbackResponse += `### How to Use This Framework\n\n`;
         fallbackResponse += `1. **Start with Google Workspace tools** for quick wins\n`;
@@ -1800,7 +2217,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
       setIsTyping(true);
 
       try {
-        const response = await fetch(apiUrl('/api/chat'), {
+        const response = await fetch('/api/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1858,7 +2275,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
       setIsTyping(true);
 
       try {
-        const response = await fetch(apiUrl('/api/chat'), {
+        const response = await fetch('/api/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1981,7 +2398,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
     const diff = now - date;
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const days = Math.floor(hours / 24);
-    
+
     if (hours < 1) return 'Just now';
     if (hours < 24) return `${hours}h ago`;
     if (days === 1) return 'Yesterday';
@@ -2000,292 +2417,363 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
       {/* Header */}
       <header className="chatbot-header">
         <div className="logo-container">
-            <img src="/android-chrome-192x192.png" alt="Ikshan" className="logo-img" />
-            <h2>Ikshan</h2>
+          <img src="/android-chrome-192x192.png" alt="Ikshan" className="logo-img" />
+          <h2>Ikshan</h2>
         </div>
 
         <div className="header-products">
-            <div className="products-scroll">
-                 <div className="product-chip"><ShoppingCart size={14}/> <span>Ecom Listing SEO</span></div>
-                 <div className="product-chip"><TrendingUp size={14}/> <span>Learn from Competitors</span></div>
-                 <div className="product-chip"><Users size={14}/> <span>B2B Lead Gen</span></div>
-                 <div className="product-chip"><Youtube size={14}/> <span>Youtube Helper</span></div>
-                 <div className="product-chip"><Sparkles size={14}/> <span>AI Team</span></div>
-                 <div className="product-chip"><FileText size={14}/> <span>Content Creator</span></div>
-            </div>
+          <div className="products-scroll">
+            <div className="product-chip"><ShoppingCart size={14} /> <span>Ecom Listing SEO</span></div>
+            <div className="product-chip"><TrendingUp size={14} /> <span>Learn from Competitors</span></div>
+            <div className="product-chip"><Users size={14} /> <span>B2B Lead Gen</span></div>
+            <div className="product-chip"><Youtube size={14} /> <span>Youtube Helper</span></div>
+            <div className="product-chip"><Sparkles size={14} /> <span>AI Team</span></div>
+            <div className="product-chip"><FileText size={14} /> <span>Content Creator</span></div>
+          </div>
         </div>
-        
+
         <div className="header-actions">
-           <button onClick={() => setShowChatHistory(true)} title="History"><History size={20}/></button>
-           <button onClick={handleStartNewIdea} title="New Chat"><Plus size={20}/></button>
+          <button onClick={() => onNavigate && onNavigate('about')} title="About"><FileText size={20} /></button>
+          <button onClick={() => setShowChatHistory(true)} title="History"><History size={20} /></button>
+          <button onClick={handleStartNewIdea} title="New Chat"><Plus size={20} /></button>
         </div>
       </header>
-      
+
       {/* Main Content */}
       <div className="chat-window">
         {/* Typeform / Flow Stages */}
         {['outcome', 'domain', 'task'].includes(flowStage) ? (
-            <div className="empty-state">
-              {flowStage === 'outcome' && (
-                 <>
-                    {/* Icon removed */}
-                    <h1>Scale Your Business with AI Agents - Start Today</h1>
-                    <p>Select what matters most to you right now</p>
-                    <div className="suggestions-grid">
-                      {outcomeOptions.map((outcome, index) => (
-                        <div 
-                            key={outcome.id} 
-                            className="suggestion-card" 
-                            onClick={() => handleOutcomeClick(outcome)}
-                            style={{ animationDelay: `${index * 0.1}s`, animation: 'fadeIn 0.5s ease-out forwards' }}
-                        >
-                           <h3>{outcome.text}</h3>
-                           {outcome.subtext && <p className="goal-subtext">{outcome.subtext}</p>}
-                        </div>
-                      ))}
-                    </div>
-                    <p style={{ marginTop: '3rem', fontSize: '0.8rem', fontStyle: 'italic', color: '#6b7280', opacity: 0.7, textAlign: 'center' }}>"I don't have time or team to figure out AI" - Netizen</p>
-                 </>
-              )}
-
-              {flowStage === 'domain' && (
-                 <>
-                    {/* Icon removed */}
-                    <h1>Which domain best matches your need?</h1>
-                    <p>Select a domain to see relevant tasks</p>
-                    <div className="suggestions-grid">
-                      {getDomainsForSelection().map((domain, index) => (
-                        <div 
-                            key={index} 
-                            className="suggestion-card" 
-                            onClick={() => handleDomainClickNew(domain)}
-                            style={{ animationDelay: `${index * 0.1}s`, animation: 'fadeIn 0.5s ease-out forwards' }}
-                        >
-                           <h3>{domain}</h3>
-                        </div>
-                      ))}
-                    </div>
-                    <button 
-                        style={{marginTop: '2rem', background: 'transparent', border:'none', color:'#6b7280', cursor:'pointer'}}
-                        onClick={() => { setSelectedGoal(null); setSelectedDomainName(null); setFlowStage('outcome'); }}
+          <div className="empty-state">
+            {flowStage === 'outcome' && (
+              <>
+                {/* Icon removed */}
+                <h1>Professional expertise, on-demand—without the salary or recruiting.</h1>
+                <p>Select what matters most to you right now</p>
+                <div className="suggestions-grid">
+                  {outcomeOptions.map((outcome, index) => (
+                    <div
+                      key={outcome.id}
+                      className="suggestion-card"
+                      onClick={() => handleOutcomeClick(outcome)}
+                      style={{ animationDelay: `${index * 0.1}s`, animation: 'fadeIn 0.5s ease-out forwards' }}
                     >
-                        ← Back
-                    </button>
-                 </>
-              )}
-
-              {flowStage === 'task' && (
-                 <>
-                    {/* Icon removed */}
-                    <h1>What task would you like help with?</h1>
-                    <div className="suggestions-grid">
-                      {getTasksForSelection().map((task, index) => (
-                        <div 
-                            key={index} 
-                            className="suggestion-card" 
-                            onClick={() => handleTaskClick(task)}
-                            style={{ animationDelay: `${index * 0.05}s`, animation: 'fadeIn 0.3s ease-out forwards' }}
-                         >
-                           <h3>{task}</h3>
-                        </div>
-                      ))}
-                       <div 
-                            className="suggestion-card" 
-                            onClick={handleTypeCustomProblem}
-                       >
-                           <h3>Type my own problem...</h3>
-                       </div>
+                      <h3>{outcome.text}</h3>
+                      {outcome.subtext && <p className="goal-subtext">{outcome.subtext}</p>}
                     </div>
-                    <button 
-                        style={{marginTop: '2rem', background: 'transparent', border:'none', color:'#6b7280', cursor:'pointer'}}
-                        onClick={() => { setSelectedDomainName(null); setFlowStage('domain'); }}
+                  ))}
+                </div>
+                <p style={{ marginTop: '3rem', fontSize: '0.8rem', fontStyle: 'italic', color: '#6b7280', opacity: 0.7, textAlign: 'center' }}>"I don't have time or team to figure out AI" - Netizen</p>
+              </>
+            )}
+
+            {flowStage === 'domain' && (
+              <>
+                {/* Icon removed */}
+                <h1>Which domain best matches your need?</h1>
+                <p>Select a domain to see relevant tasks</p>
+                <div className="suggestions-grid">
+                  {getDomainsForSelection().map((domain, index) => (
+                    <div
+                      key={index}
+                      className="suggestion-card"
+                      onClick={() => handleDomainClickNew(domain)}
+                      style={{ animationDelay: `${index * 0.1}s`, animation: 'fadeIn 0.5s ease-out forwards' }}
                     >
-                        ← Back
-                    </button>
-                 </>
-              )}
-            </div>
+                      <h3>{domain}</h3>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  style={{ marginTop: '2rem', background: 'transparent', border: 'none', color: '#6b7280', cursor: 'pointer' }}
+                  onClick={() => { setSelectedGoal(null); setSelectedDomainName(null); setFlowStage('outcome'); }}
+                >
+                  ← Back
+                </button>
+              </>
+            )}
+
+            {flowStage === 'task' && (
+              <>
+                {/* Icon removed */}
+                <h1>What task would you like help with?</h1>
+                <div className="suggestions-grid">
+                  {getTasksForSelection().map((task, index) => (
+                    <div
+                      key={index}
+                      className="suggestion-card"
+                      onClick={() => handleTaskClick(task)}
+                      style={{ animationDelay: `${index * 0.05}s`, animation: 'fadeIn 0.3s ease-out forwards' }}
+                    >
+                      <h3>{task}</h3>
+                    </div>
+                  ))}
+                  <div
+                    className="suggestion-card"
+                    onClick={handleTypeCustomProblem}
+                  >
+                    <h3>Type my own problem...</h3>
+                  </div>
+                </div>
+                <button
+                  style={{ marginTop: '2rem', background: 'transparent', border: 'none', color: '#6b7280', cursor: 'pointer' }}
+                  onClick={() => { setSelectedDomainName(null); setFlowStage('domain'); }}
+                >
+                  ← Back
+                </button>
+              </>
+            )}
+
+          </div>
         ) : (
-             /* Chat Message List */
-             <div className="messages-wrapper">
-                {messages.map((message) => (
-                  <div key={message.id} className={`message ${message.sender === 'user' ? 'user' : 'bot'}`}>
-                     <div className="avatar">
-                        {message.sender === 'user' ? <User size={18} /> : <Bot size={18} />}
-                     </div>
-                     <div className="message-content">
-                        {message.sender === 'bot' ? (
-                          <ReactMarkdown>{message.text}</ReactMarkdown>
-                        ) : (
-                          message.text
-                        )}
-                        
-                        {/* Identity Form Injection - Keep simplified logic */}
-                        {message.showIdentityForm && (
-                           <div className="identity-form" style={{ marginTop: '1rem', position: 'relative', animation: 'none', boxShadow: 'none', padding: '1.5rem', border: '1px solid #e5e7eb' }}>
-                                <IdentityForm onSubmit={handleIdentitySubmit} />
-                           </div>
-                        )}
-                        
-                        {/* Actions */}
-                        {message.showFinalActions && (
-                            <div style={{marginTop: '1.5rem'}}>
-                                {/* Action Buttons Row */}
-                                <div style={{display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem'}}>
-                                    <button 
-                                        onClick={handleStartNewIdea}
-                                        className="action-btn primary"
-                                    >
-                                        <Sparkles size={16}/> Check Another Idea
-                                    </button>
-                                    {message.companies && message.companies.length > 0 && (
-                                       <button
-                                         onClick={() => handleLearnImplementation(message.companies, message.userRequirement)}
-                                         className="action-btn secondary"
-                                       >
-                                         Learn Implementation
-                                       </button>
-                                    )}
-                                </div>
+          /* Chat Message List */
+          <div className="messages-wrapper">
+            {messages.map((message) => (
+              <div key={message.id} className={`message ${message.sender === 'user' ? 'user' : 'bot'}`}>
+                <div className="avatar">
+                  {message.sender === 'user' ? <User size={18} /> : <Bot size={18} />}
+                </div>
+                <div className="message-content">
+                  {message.sender === 'bot' ? (
+                    <ReactMarkdown>{message.text}</ReactMarkdown>
+                  ) : (
+                    message.text
+                  )}
 
-                                {/* Payment Card — Unlock RCA */}
-                                {selectedCategory && !paymentVerified && (
-                                    <div className="payment-card">
-                                        <div className="payment-card-badge">
-                                            <Lock size={12}/> Premium
-                                        </div>
-                                        <div className="payment-card-content">
-                                            <div className="payment-card-left">
-                                                <h3 className="payment-card-title">
-                                                    <Brain size={20}/> Unlock Root Cause Analysis
-                                                </h3>
-                                                <p className="payment-card-desc">
-                                                    Get a deep, structured diagnosis with AI-powered root cause analysis and corrective action plan.
-                                                </p>
-                                                <ul className="payment-card-features">
-                                                    <li><Shield size={14}/> Problem Definition</li>
-                                                    <li><BarChart3 size={14}/> Data Collection</li>
-                                                    <li><Brain size={14}/> Root Cause Summary</li>
-                                                    <li><TrendingUp size={14}/> Action Plan</li>
-                                                </ul>
-                                            </div>
-                                            <div className="payment-card-right">
-                                                <div className="payment-card-price">
-                                                    <span className="payment-price-currency">₹</span>
-                                                    <span className="payment-price-amount">499</span>
-                                                    <span className="payment-price-period">one-time</span>
-                                                </div>
-                                                <button
-                                                    onClick={handlePayForRCA}
-                                                    disabled={paymentLoading}
-                                                    className="payment-card-btn"
-                                                >
-                                                    {paymentLoading ? (
-                                                        <>Processing...</>
-                                                    ) : (
-                                                        <><CreditCard size={16}/> Pay ₹499 &amp; Unlock</>
-                                                    )}
-                                                </button>
-                                                <p className="payment-card-secure">
-                                                    <Shield size={12}/> Secured by JusPay
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
+                  {/* Identity Form Injection - Keep simplified logic */}
+                  {message.showIdentityForm && (
+                    <div className="identity-form" style={{ marginTop: '1rem', position: 'relative', animation: 'none', boxShadow: 'none', padding: '1.5rem', border: '1px solid #e5e7eb' }}>
+                      <IdentityForm onSubmit={handleIdentitySubmit} />
+                    </div>
+                  )}
+
+                  {/* Diagnostic Section Options — in-chat */}
+                  {message.diagnosticOptions && message.diagnosticOptions.length > 0 && (
+                    <div className="diagnostic-options" style={{ marginTop: '1rem' }}>
+                      {message.sectionIndex === currentDynamicQIndex ? (
+                        <>
+                          {message.diagnosticOptions.map((opt, i) => (
+                            <button
+                              key={i}
+                              className="diagnostic-option-btn"
+                              onClick={() => handleDynamicAnswer(opt)}
+                              style={{ animationDelay: `${i * 0.04}s` }}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                          {message.allowsFreeText && (
+                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                              <input
+                                type="text"
+                                value={dynamicFreeText}
+                                onChange={(e) => setDynamicFreeText(e.target.value)}
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter' && dynamicFreeText.trim()) {
+                                    handleDynamicFreeTextSubmit();
+                                  }
+                                }}
+                                placeholder="Or describe your own..."
+                                className="diagnostic-free-input"
+                              />
+                              <button
+                                onClick={handleDynamicFreeTextSubmit}
+                                disabled={!dynamicFreeText.trim()}
+                                className="diagnostic-free-submit"
+                              >
+                                &rarr;
+                              </button>
                             </div>
-                        )}
-                     </div>
-                  </div>
-                ))}
-                
-                {isTyping && (
-                  <div className="message bot">
-                     <div className="avatar"><Bot size={18}/></div>
-                     <div className="message-content">
-                        <div className="typing-indicator" style={{marginLeft: 0, padding: 0, boxShadow: 'none', background: 'transparent'}}>
-                            <div className="typing-dot"></div>
-                            <div className="typing-dot"></div>
-                            <div className="typing-dot"></div>
+                          )}
+                        </>
+                      ) : (
+                        <p style={{ color: 'var(--ikshan-text-secondary, #6b7280)', fontSize: '0.85rem', fontStyle: 'italic', marginTop: '0.5rem' }}>
+                          &#10003; Answered
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Google Auth Gate — in-chat */}
+                  {message.showAuthGate && (
+                    <div className="auth-gate-card">
+                      {userEmail ? (
+                        <div className="auth-gate-signed-in">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="8" fill="#10b981"/><path d="M5 8.5l2 2 4-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          <span>Signed in as <strong>{userName}</strong></span>
                         </div>
-                     </div>
+                      ) : (
+                        <>
+                          <button onClick={handleGoogleSignIn} className="auth-gate-google-btn">
+                            <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                            Sign in with Google
+                          </button>
+                          <button onClick={handleSkipAuth} className="auth-gate-skip-btn">
+                            Continue without signing in
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  {message.showFinalActions && (
+                    <div style={{ marginTop: '1.5rem' }}>
+                      {/* Action Buttons Row */}
+                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+                        <button
+                          onClick={handleStartNewIdea}
+                          className="action-btn primary"
+                        >
+                          <Sparkles size={16} /> Check Another Idea
+                        </button>
+                        {message.companies && message.companies.length > 0 && (
+                          <button
+                            onClick={() => handleLearnImplementation(message.companies, message.userRequirement)}
+                            className="action-btn secondary"
+                          >
+                            Learn Implementation
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Payment Card — Unlock RCA */}
+                      {selectedCategory && !paymentVerified && (
+                        <div className="payment-card">
+                          <div className="payment-card-badge">
+                            <Lock size={12} /> Premium
+                          </div>
+                          <div className="payment-card-content">
+                            <div className="payment-card-left">
+                              <h3 className="payment-card-title">
+                                <Brain size={20} /> Unlock Root Cause Analysis
+                              </h3>
+                              <p className="payment-card-desc">
+                                Get a deep, structured diagnosis with AI-powered root cause analysis and corrective action plan.
+                              </p>
+                              <ul className="payment-card-features">
+                                <li><Shield size={14} /> Problem Definition</li>
+                                <li><BarChart3 size={14} /> Data Collection</li>
+                                <li><Brain size={14} /> Root Cause Summary</li>
+                                <li><TrendingUp size={14} /> Action Plan</li>
+                              </ul>
+                            </div>
+                            <div className="payment-card-right">
+                              <div className="payment-card-price">
+                                <span className="payment-price-currency">₹</span>
+                                <span className="payment-price-amount">499</span>
+                                <span className="payment-price-period">one-time</span>
+                              </div>
+                              <button
+                                onClick={handlePayForRCA}
+                                disabled={paymentLoading}
+                                className="payment-card-btn"
+                              >
+                                {paymentLoading ? (
+                                  <>Processing...</>
+                                ) : (
+                                  <><CreditCard size={16} /> Pay ₹499 &amp; Unlock</>
+                                )}
+                              </button>
+                              <p className="payment-card-secure">
+                                <Shield size={12} /> Secured by JusPay
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {isTyping && (
+              <div className="message bot">
+                <div className="avatar"><Bot size={18} /></div>
+                <div className="message-content">
+                  <div className="typing-indicator" style={{ marginLeft: 0, padding: 0, boxShadow: 'none', background: 'transparent' }}>
+                    <div className="typing-dot"></div>
+                    <div className="typing-dot"></div>
+                    <div className="typing-dot"></div>
                   </div>
-                )}
-                
-                <div ref={messagesEndRef} />
-             </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
         )}
       </div>
 
       {/* Input Area */}
       {!['outcome', 'domain', 'task', 'rca'].includes(flowStage) && (
-          <div className="input-area">
-            {speechError && <div style={{position:'absolute', top:'-40px', background:'#fee2e2', color:'#b91c1c', padding:'0.5rem 1rem', borderRadius:'8px', fontSize:'0.9rem'}}>{speechError}</div>}
-            <div className="input-container">
-               <textarea 
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  placeholder={isRecording ? "Listening..." : "Message Ikshan..."}
-                  rows={1}
-               />
-               <button 
-                  onClick={() => {
-                    voiceSupported ? toggleVoiceRecording() : handleSend();
-                  }} 
-                  title={isRecording ? "Stop" : "Send"}
-               >
-                  {isRecording ? <MicOff size={20} /> : (inputValue.trim() ? <Send size={20}/> : <Mic size={20}/>)}
-               </button>
-            </div>
+        <div className="input-area">
+          {speechError && <div style={{ position: 'absolute', top: '-40px', background: '#fee2e2', color: '#b91c1c', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.9rem' }}>{speechError}</div>}
+          <div className="input-container">
+            <textarea
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={isRecording ? "Listening..." : "Message Ikshan..."}
+              rows={1}
+            />
+            <button
+              onClick={() => {
+                voiceSupported ? toggleVoiceRecording() : handleSend();
+              }}
+              title={isRecording ? "Stop" : "Send"}
+            >
+              {isRecording ? <MicOff size={20} /> : (inputValue.trim() ? <Send size={20} /> : <Mic size={20} />)}
+            </button>
           </div>
+        </div>
       )}
 
-       {showChatHistory && (
-          <div className="identity-overlay" onClick={() => setShowChatHistory(false)}>
-             <div className="identity-form" onClick={(e) => e.stopPropagation()}>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem'}}>
-                    <h2>Chat History</h2>
-                    <button onClick={() => setShowChatHistory(false)} style={{background:'transparent', color:'#6b7280', width:'auto', padding:0}}><X size={24}/></button>
-                </div>
-                 <div className="chat-history-list" style={{maxHeight:'300px', overflowY:'auto', textAlign:'left'}}>
-                    {chatHistory.length === 0 ? <p style={{color:'#6b7280'}}>No history yet</p> : 
-                        chatHistory.map((chat) => (
-                           <div 
-                             key={chat.id} 
-                             onClick={() => handleLoadChat(chat)}
-                             style={{padding:'1rem', borderBottom:'1px solid #f3f4f6', cursor:'pointer'}}
-                           >
-                             <div style={{fontWeight:500, marginBottom:'0.25rem'}}>{chat.title}</div>
-                             <div style={{fontSize:'0.8rem', color:'#6b7280'}}>{formatHistoryTime(chat.timestamp)}</div>
-                           </div>
-                        ))
-                    }
-                </div>
-             </div>
+      {showChatHistory && (
+        <div className="identity-overlay" onClick={() => setShowChatHistory(false)}>
+          <div className="identity-form" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2>Chat History</h2>
+              <button onClick={() => setShowChatHistory(false)} style={{ background: 'transparent', color: '#6b7280', width: 'auto', padding: 0 }}><X size={24} /></button>
+            </div>
+            <div className="chat-history-list" style={{ maxHeight: '300px', overflowY: 'auto', textAlign: 'left' }}>
+              {chatHistory.length === 0 ? <p style={{ color: '#6b7280' }}>No history yet</p> :
+                chatHistory.map((chat) => (
+                  <div
+                    key={chat.id}
+                    onClick={() => handleLoadChat(chat)}
+                    style={{ padding: '1rem', borderBottom: '1px solid #f3f4f6', cursor: 'pointer' }}
+                  >
+                    <div style={{ fontWeight: 500, marginBottom: '0.25rem' }}>{chat.title}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>{formatHistoryTime(chat.timestamp)}</div>
+                  </div>
+                ))
+              }
+            </div>
           </div>
-       )}
-       
+        </div>
+      )}
+
       {/* Auth Modal Reused if exists */}
       {showAuthModal && (
         <div className="identity-overlay" onClick={() => setShowAuthModal(false)}>
           <div className="identity-form" onClick={(e) => e.stopPropagation()}>
-             <h2>Start Fresh</h2>
-             <p style={{marginBottom:'2rem', color:'#6b7280'}}>Sign in to save your progress</p>
-             <button onClick={handleGoogleSignIn} style={{display:'flex', alignItems:'center', justifyContent:'center', gap:'10px', background:'white', border:'1px solid #d1d5db', color:'#374151'}}>
-                <span style={{fontWeight:600}}>Continue with Google</span>
-             </button>
-             <button 
-                onClick={() => window.location.reload()}
-                style={{marginTop:'1rem', background:'transparent', color:'#6b7280', fontWeight:400}}
-             >
-                Continue without signing in
-             </button>
+            <h2>Start Fresh</h2>
+            <p style={{ marginBottom: '2rem', color: '#6b7280' }}>Sign in to save your progress</p>
+            <button onClick={handleGoogleSignIn} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', background: 'white', border: '1px solid #d1d5db', color: '#374151' }}>
+              <span style={{ fontWeight: 600 }}>Continue with Google</span>
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              style={{ marginTop: '1rem', background: 'transparent', color: '#6b7280', fontWeight: 400 }}
+            >
+              Continue without signing in
+            </button>
           </div>
         </div>
       )}
