@@ -393,9 +393,11 @@
 }
 
 .empty-state h1 {
-  font-size: 1.75rem;
-  font-weight: 600;
+  font-size: 1.6rem;
+  font-weight: 800;
   margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
 }
 
 .empty-state p {
@@ -404,52 +406,103 @@
   margin-bottom: 2rem;
 }
 
+/* Hero badge & highlight for mobile */
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(109,40,217,0.08), rgba(139,92,246,0.12));
+  border: 1px solid rgba(109,40,217,0.2);
+  color: var(--ikshan-purple);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.8rem;
+  border-radius: 100px;
+  margin-bottom: 0.75rem;
+}
+
+.hero-highlight {
+  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Suggestion list — mobile vertical list style */
 .suggestions-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
-  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   width: 100%;
-  padding: 0 1rem;
+  padding: 0 0.75rem;
+  border: 1.5px solid var(--ikshan-border);
+  border-radius: 14px;
+  overflow: hidden;
 }
 
 .suggestion-card {
   background-color: var(--ikshan-surface);
-  border: 1px solid var(--ikshan-border);
-  border-radius: var(--radius-md);
-  padding: 1rem;
+  border: none;
+  border-bottom: 1px solid var(--ikshan-border);
+  border-radius: 0;
+  padding: 0.9rem 1rem;
   text-align: left;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  position: relative;
 }
 
-.suggestion-card:hover {
-  border-color: var(--ikshan-purple-light);
-  box-shadow: var(--ikshan-shadow-md);
-  transform: translateY(-2px);
+.suggestion-card:last-child {
+  border-bottom: none;
+}
+
+.suggestion-card::after {
+  content: '›';
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--ikshan-purple-light);
+  opacity: 0.45;
+  flex-shrink: 0;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.suggestion-card:active {
+  background: rgba(109, 40, 217, 0.05);
+}
+
+.suggestion-card:active::after {
+  opacity: 1;
+  transform: translateX(3px);
 }
 
 .suggestion-card h3 {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 600;
-  margin-bottom: 0.25rem;
+  margin: 0;
   color: var(--ikshan-text-primary);
+  flex: 1;
+  line-height: 1.3;
 }
 
 .suggestion-card p {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   margin: 0;
   color: var(--ikshan-text-secondary);
 }
 
 .suggestion-card .goal-subtext {
-  font-size: 0.65rem;
-  font-style: italic;
-  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  margin-top: 0.2rem;
   color: var(--ikshan-text-secondary);
-  opacity: 0.85;
-  text-align: center;
+  opacity: 0.8;
+  text-align: left;
   line-height: 1.3;
+  font-style: normal;
 }
 
 .landing-quote {
@@ -594,7 +647,7 @@
   }
 
   .suggestions-grid {
-    grid-template-columns: 1fr;
+    padding: 0 0.5rem;
   }
 }
 /* Premium Button Styles */
