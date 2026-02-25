@@ -537,6 +537,7 @@ const ChatBotNewMobile = ({ onNavigate }) => {
   const [sessionId, setSessionId] = useState(null);
   const sessionIdRef = useRef(null); // ref mirrors state — avoids React batching delays
   const pendingAuthActionRef = useRef(null); // 'recommendations' when auth-gate is active
+  const googleSignInInProgressRef = useRef(false); // guard against duplicate FedCM requests
   const [dynamicQuestions, setDynamicQuestions] = useState([]);
   const [currentDynamicQIndex, setCurrentDynamicQIndex] = useState(0);
   const [dynamicAnswers, setDynamicAnswers] = useState({});
@@ -828,8 +829,10 @@ const ChatBotNewMobile = ({ onNavigate }) => {
   }, []);
 
   const handleGoogleSignIn = () => {
+    // Prevent duplicate FedCM requests
+    if (googleSignInInProgressRef.current) return;
+
     if (!isGoogleLoaded || !window.google?.accounts?.id) {
-      // Show error message instead of causing infinite reload loop
       const errorMessage = {
         id: generateUniqueId(),
         text: '⚠️ Google Sign-In is not available right now. You can continue without signing in.',
@@ -844,7 +847,6 @@ const ChatBotNewMobile = ({ onNavigate }) => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
     if (!clientId) {
-      // Show configuration error instead of reloading
       const errorMessage = {
         id: generateUniqueId(),
         text: '⚠️ Sign-in is not configured. Please continue without signing in.',
@@ -856,12 +858,19 @@ const ChatBotNewMobile = ({ onNavigate }) => {
       return;
     }
 
+    googleSignInInProgressRef.current = true;
     window.google.accounts.id.initialize({
       client_id: clientId,
-      callback: handleGoogleCallback,
+      callback: (response) => {
+        googleSignInInProgressRef.current = false;
+        handleGoogleCallback(response);
+      },
     });
-
-    window.google.accounts.id.prompt();
+    window.google.accounts.id.prompt((notification) => {
+      if (notification.isDismissedMoment()) {
+        googleSignInInProgressRef.current = false;
+      }
+    });
   };
 
   const handleGoogleCallback = (response) => {
