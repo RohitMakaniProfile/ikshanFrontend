@@ -365,11 +365,10 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  /* Remove height: 100% to avoid layout fighting */
-  min-height: 50vh; 
+  min-height: 50vh;
   text-align: center;
   color: var(--ikshan-text-primary);
-  margin-top: 2rem; /* Add positive margin instead of negative to fix clipping */
+  margin-top: 2rem;
   padding-bottom: 2rem;
   animation: slideUp 0.5s ease-out;
 }
@@ -388,75 +387,128 @@
   color: var(--ikshan-purple);
 }
 
+/* Hero Badge */
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: linear-gradient(135deg, rgba(109,40,217,0.08), rgba(139,92,246,0.12));
+  border: 1px solid rgba(109,40,217,0.2);
+  color: var(--ikshan-purple);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.9rem;
+  border-radius: 100px;
+  margin-bottom: 1.2rem;
+}
+
 .empty-state h1 {
-  font-size: 1.75rem;
-  font-weight: 600;
-  margin-bottom: 0.5rem;
+  font-size: 2rem;
+  font-weight: 800;
+  margin-bottom: 0.75rem;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--ikshan-text-primary);
+  max-width: 560px;
+}
+
+.hero-highlight {
+  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .empty-state p {
   color: var(--ikshan-text-secondary);
-  max-width: 400px;
-  margin-bottom: 2rem;
+  max-width: 420px;
+  margin-bottom: 2.5rem;
+  font-size: 1rem;
+  line-height: 1.6;
 }
 
 .suggestions-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
-  max-width: 500px;
+  gap: 0.875rem;
+  max-width: 540px;
   width: 100%;
   padding: 0 1rem;
 }
 
 .suggestion-card {
-  background-color: var(--ikshan-surface);
-  border: 1px solid var(--ikshan-border);
+  background: var(--ikshan-surface);
+  border: 1.5px solid var(--ikshan-border);
   border-radius: var(--radius-md);
-  padding: 1rem;
-  text-align: center;
+  padding: 1.1rem 1rem;
+  text-align: left;
   cursor: pointer;
   transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.suggestion-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #6d28d9, #8b5cf6);
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
 .suggestion-card:hover {
-  border-color: var(--ikshan-purple-light);
-  box-shadow: var(--ikshan-shadow-md);
-  transform: translateY(-2px);
+  border-color: rgba(109,40,217,0.3);
+  box-shadow: 0 8px 24px rgba(109,40,217,0.1);
+  transform: translateY(-3px);
+}
+
+.suggestion-card:hover::before {
+  opacity: 1;
 }
 
 .suggestion-card h3 {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.88rem;
+  font-weight: 700;
   margin: 0;
   color: var(--ikshan-text-primary);
-  text-align: center;
+  text-align: left;
+  line-height: 1.35;
 }
 
 .suggestion-card p {
-  font-size: 0.8rem;
-  margin: 0.25rem 0 0 0;
+  font-size: 0.78rem;
+  margin: 0.3rem 0 0 0;
   color: var(--ikshan-text-secondary);
-  text-align: center;
+  text-align: left;
 }
 
 .suggestion-card .goal-subtext {
-  font-size: 0.7rem;
-  font-style: italic;
-  margin-top: 0.5rem;
-  color: var(--ikshan-text-secondary);
-  opacity: 0.85;
-  text-align: center;
+  font-size: 0.72rem;
+  margin-top: 0.4rem;
+  color: var(--ikshan-purple);
+  opacity: 0.8;
+  text-align: left;
   line-height: 1.3;
+  font-weight: 500;
 }
 
 .landing-quote {
   margin-top: 4rem;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-style: italic;
   color: var(--ikshan-text-secondary);
   opacity: 0.7;
   text-align: center;
+  padding: 0.75rem 1.5rem;
+  background: rgba(109,40,217,0.04);
+  border-radius: var(--radius-md);
+  border-left: 3px solid rgba(109,40,217,0.2);
 }
 
 /* Inline input for Other role option */

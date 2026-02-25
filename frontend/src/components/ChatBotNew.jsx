@@ -3235,8 +3235,9 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
               {flowStage === 'outcome' && (
                 <>
                   {/* Icon removed */}
-                  <h1>Professional expertise, on-demand—without the salary or recruiting.</h1>
-                  <p>Select what matters most to you right now</p>
+                  <div className="hero-badge">AI Business Intelligence Platform</div>
+                  <h1>Scale Your Business with AI Agents —<span className="hero-highlight"> starting today</span></h1>
+                  <p>Tell us your biggest business challenge — get a personalized AI action plan in 60 seconds</p>
                   <div className="suggestions-grid">
                     {outcomeOptions.map((outcome, index) => (
                       <div
