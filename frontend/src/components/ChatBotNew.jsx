@@ -3197,12 +3197,13 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
           </button>
         </div>
         <div className="sidebar-content">
+          <p className="sidebar-section-label">AI Agents</p>
           <div className="products-list">
             {productsData.map((product) => {
               const IconComponent = product.icon;
               return (
                 <div key={product.id} className={`product-card ${product.status}`}>
-                  <IconComponent size={18} className="product-icon-simple" />
+                  <IconComponent size={16} className="product-icon-simple" />
                   <div className="product-text">
                     <span className="product-name">{product.name}</span>
                     <span className="product-subtitle">{product.subtitle}</span>
