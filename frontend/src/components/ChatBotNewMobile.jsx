@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Mic, MicOff, Package, Box, Gift, ArrowLeft, Plus, MessageSquare, ShoppingCart, Scale, Users, Sparkles, Youtube, History, X, Menu, Edit3, Chrome, Zap, Brain, Copy, TrendingUp, FileText, Lock, Shield, CreditCard, BarChart3 } from 'lucide-react';
+import { Send, Bot, User, Mic, MicOff, Package, Box, Gift, ArrowLeft, Plus, MessageSquare, ShoppingCart, Scale, Users, Sparkles, Youtube, History, X, Menu, Edit3, Chrome, Zap, Brain, Copy, TrendingUp, FileText, Lock, Shield, CreditCard, BarChart3, ChevronDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import './ChatBotNewMobile.css';
 import { formatCompaniesForDisplay, analyzeMarketGaps } from '../utils/csvParser';
@@ -502,6 +502,15 @@ const IdentityForm = ({ onSubmit }) => {
   );
 };
 
+const MOBILE_PRODUCTS = [
+  { icon: ShoppingCart, name: 'Ecom Listing SEO' },
+  { icon: TrendingUp, name: 'Learn from Competitors' },
+  { icon: Users, name: 'B2B Lead Gen' },
+  { icon: Youtube, name: 'Youtube Helper' },
+  { icon: Sparkles, name: 'AI Team' },
+  { icon: FileText, name: 'Content Creator' },
+];
+
 const ChatBotNewMobile = ({ onNavigate }) => {
   const [messages, setMessages] = useState([
     {
@@ -582,6 +591,8 @@ const ChatBotNewMobile = ({ onNavigate }) => {
   const [showChatHistory, setShowChatHistory] = useState(false);
   const [speechError, setSpeechError] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [activeProduct, setActiveProduct] = useState(MOBILE_PRODUCTS[0]);
 
   // Dashboard view state
   const [showDashboard, setShowDashboard] = useState(false);
@@ -2422,14 +2433,38 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
         </div>
 
         <div className="header-products">
-          <div className="products-scroll">
-            <div className="product-chip"><ShoppingCart size={14} /> <span>Ecom Listing SEO</span></div>
-            <div className="product-chip"><TrendingUp size={14} /> <span>Learn from Competitors</span></div>
-            <div className="product-chip"><Users size={14} /> <span>B2B Lead Gen</span></div>
-            <div className="product-chip"><Youtube size={14} /> <span>Youtube Helper</span></div>
-            <div className="product-chip"><Sparkles size={14} /> <span>AI Team</span></div>
-            <div className="product-chip"><FileText size={14} /> <span>Content Creator</span></div>
+          <div
+            className="product-chip-trigger"
+            onClick={() => setShowProductDropdown(prev => !prev)}
+          >
+            <activeProduct.icon size={14} />
+            <span>{activeProduct.name}</span>
+            <ChevronDown size={12} className={`dropdown-arrow${showProductDropdown ? ' rotated' : ''}`} />
           </div>
+
+          {showProductDropdown && (
+            <>
+              <div className="product-dropdown-overlay" onClick={() => setShowProductDropdown(false)} />
+              <div className="product-dropdown-menu">
+                {MOBILE_PRODUCTS.map((product, index) => {
+                  const Icon = product.icon;
+                  return (
+                    <div
+                      key={index}
+                      className={`product-dropdown-item${activeProduct.name === product.name ? ' active' : ''}`}
+                      onClick={() => {
+                        setActiveProduct(product);
+                        setShowProductDropdown(false);
+                      }}
+                    >
+                      <Icon size={16} />
+                      <span>{product.name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="header-actions">
