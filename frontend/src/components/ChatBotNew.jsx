@@ -2296,7 +2296,7 @@ const ChatBotNew = ({ onNavigate }) => {
           customer_id: userEmail || `guest_${Date.now()}`,
           customer_email: userEmail || '',
           customer_phone: '',
-          return_url: `${window.location.origin}?payment_status=success`,
+          return_url: `${window.location.origin}/api/v1/payments/callback`,
           description: 'Ikshan Root Cause Analysis — Premium Deep Dive',
           udf1: 'rca_unlock',
           udf2: selectedGoal || ''
