@@ -2784,16 +2784,15 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                           <div className="payment-card-content">
                             <div className="payment-card-left">
                               <h3 className="payment-card-title">
-                                <Brain size={20} /> Unlock Root Cause Analysis
+                                <Brain size={20} /> Unlock Your 30-Point Strategic Roadmap
                               </h3>
                               <p className="payment-card-desc">
-                                Get a deep, structured diagnosis with AI-powered root cause analysis and corrective action plan.
+                                Get a deep, structured diagnosis of your business with AI-powered website checker, competitor analysis. Figure out the unknown opportunities and AI tools with strategic action pointers.
                               </p>
                               <ul className="payment-card-features">
-                                <li><Shield size={14} /> Problem Definition</li>
-                                <li><BarChart3 size={14} /> Data Collection</li>
-                                <li><Brain size={14} /> Root Cause Summary</li>
-                                <li><TrendingUp size={14} /> Action Plan</li>
+                                <li><BarChart3 size={14} /> <strong>10 Competitive Intel Insights</strong></li>
+                                <li><Brain size={14} /> <strong>10 Brand &amp; Product Levers</strong></li>
+                                <li><TrendingUp size={14} /> <strong>10 Conversion Optimizations</strong></li>
                               </ul>
                             </div>
                             <div className="payment-card-right">

@@ -3580,17 +3580,15 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                             <div className="payment-card-content">
                               <div className="payment-card-left">
                                 <h3 className="payment-card-title">
-                                  <Brain size={20} /> Unlock Root Cause Analysis
+                                  <Brain size={20} /> Unlock Your 30-Point Strategic Roadmap
                                 </h3>
                                 <p className="payment-card-desc">
-                                  Go beyond surface-level solutions. Get a deep, structured diagnosis of your problem with
-                                  AI-powered root cause analysis, data collection framework, and corrective action plan.
+                                  Get a deep, structured diagnosis of your business with AI-powered website checker, competitor analysis. Figure out the unknown opportunities and AI tools with strategic action pointers.
                                 </p>
                                 <ul className="payment-card-features">
-                                  <li><Shield size={14} /> Stage 1: Problem Definition (5 diagnostic questions)</li>
-                                  <li><BarChart3 size={14} /> Stage 2: Data Collection framework</li>
-                                  <li><Brain size={14} /> AI-generated Root Cause Summary</li>
-                                  <li><TrendingUp size={14} /> Corrective Action Plan</li>
+                                  <li><BarChart3 size={14} /> <strong>10 Competitive Intel Insights:</strong> Best practices of your top 3 competitors</li>
+                                  <li><Brain size={14} /> <strong>10 High-Leverage Brand &amp; Product Levers:</strong> Command higher margins or better retention</li>
+                                  <li><TrendingUp size={14} /> <strong>10 Conversion Optimizations:</strong> Eliminate friction &amp; aim for 2X sales</li>
                                 </ul>
                               </div>
                               <div className="payment-card-right">
