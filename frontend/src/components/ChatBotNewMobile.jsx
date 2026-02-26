@@ -2488,8 +2488,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
             className="product-chip-trigger"
             onClick={() => setShowProductDropdown(prev => !prev)}
           >
-            <activeProduct.icon size={14} />
-            <span>{activeProduct.name}</span>
+            <span>Products</span>
             <ChevronDown size={12} className={`dropdown-arrow${showProductDropdown ? ' rotated' : ''}`} />
           </div>
 
