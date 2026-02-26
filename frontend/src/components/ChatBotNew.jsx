@@ -3,6 +3,7 @@ import { Send, Bot, User, Mic, MicOff, Package, Box, Gift, ArrowLeft, Plus, Mess
 import ReactMarkdown from 'react-markdown';
 import './ChatBotNew.css';
 import { formatCompaniesForDisplay, analyzeMarketGaps } from '../utils/csvParser';
+import { supabase } from '../lib/supabase';
 
 
 // Generate unique message IDs to prevent React key conflicts
@@ -1249,6 +1250,38 @@ const ChatBotNew = ({ onNavigate }) => {
     }
   }, [chatHistory]);
 
+  // Restore Supabase auth session on mount — works across page reloads & devices
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const name = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email;
+        const email = session.user.email;
+        setUserName(name);
+        setUserEmail(email);
+        localStorage.setItem('ikshan-user-name', name);
+        localStorage.setItem('ikshan-user-email', email);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        const name = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email;
+        const email = session.user.email;
+        setUserName(name);
+        setUserEmail(email);
+        localStorage.setItem('ikshan-user-name', name);
+        localStorage.setItem('ikshan-user-email', email);
+      } else if (event === 'SIGNED_OUT') {
+        setUserName(null);
+        setUserEmail(null);
+        localStorage.removeItem('ikshan-user-name');
+        localStorage.removeItem('ikshan-user-email');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -1485,12 +1518,25 @@ const ChatBotNew = ({ onNavigate }) => {
     window.google.accounts.id.prompt();
   };
 
-  const handleGoogleCallback = (response) => {
-    const payload = JSON.parse(atob(response.credential.split('.')[1]));
-    setUserName(payload.name);
-    setUserEmail(payload.email);
-    localStorage.setItem('ikshan-user-name', payload.name);
-    localStorage.setItem('ikshan-user-email', payload.email);
+  const handleGoogleCallback = async (response) => {
+    let name, email;
+    try {
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: response.credential,
+      });
+      if (error) throw error;
+      name = data.user.user_metadata?.full_name || data.user.user_metadata?.name || data.user.email;
+      email = data.user.email;
+    } catch (err) {
+      const payload = JSON.parse(atob(response.credential.split('.')[1]));
+      name = payload.name;
+      email = payload.email;
+    }
+    setUserName(name);
+    setUserEmail(email);
+    localStorage.setItem('ikshan-user-name', name);
+    localStorage.setItem('ikshan-user-email', email);
     setShowAuthModal(false);
 
     // If auth-gate before recommendations, proceed directly
@@ -1498,7 +1544,7 @@ const ChatBotNew = ({ onNavigate }) => {
       pendingAuthActionRef.current = null;
       const welcomeMsg = {
         id: getNextMessageId(),
-        text: `Welcome, ${payload.name}! Generating your personalized recommendations...`,
+        text: `Welcome, ${name}! Generating your personalized recommendations...`,
         sender: 'bot',
         timestamp: new Date(),
       };
@@ -1560,10 +1606,6 @@ const ChatBotNew = ({ onNavigate }) => {
     setSelectedDomainName(null);
     setUserRole(null);
     setRequirement(null);
-    setUserName(null);
-    setUserEmail(null);
-    localStorage.removeItem('ikshan-user-name');
-    localStorage.removeItem('ikshan-user-email');
     setCustomRole('');
     setSelectedCategory(null);
     setCustomCategoryInput('');
