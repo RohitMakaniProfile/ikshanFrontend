@@ -1094,8 +1094,8 @@ const ChatBotNew = ({ onNavigate }) => {
   const [selectedDomainName, setSelectedDomainName] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [requirement, setRequirement] = useState(null);
-  const [userName, setUserName] = useState(null);
-  const [userEmail, setUserEmail] = useState(null);
+  const [userName, setUserName] = useState(() => localStorage.getItem('ikshan-user-name') || null);
+  const [userEmail, setUserEmail] = useState(() => localStorage.getItem('ikshan-user-email') || null);
   const [flowStage, setFlowStage] = useState('outcome');
 
   // ── AI Agent Session State ─────────────────────────────────
@@ -1489,6 +1489,8 @@ const ChatBotNew = ({ onNavigate }) => {
     const payload = JSON.parse(atob(response.credential.split('.')[1]));
     setUserName(payload.name);
     setUserEmail(payload.email);
+    localStorage.setItem('ikshan-user-name', payload.name);
+    localStorage.setItem('ikshan-user-email', payload.email);
     setShowAuthModal(false);
 
     // If auth-gate before recommendations, proceed directly
@@ -1560,6 +1562,8 @@ const ChatBotNew = ({ onNavigate }) => {
     setRequirement(null);
     setUserName(null);
     setUserEmail(null);
+    localStorage.removeItem('ikshan-user-name');
+    localStorage.removeItem('ikshan-user-email');
     setCustomRole('');
     setSelectedCategory(null);
     setCustomCategoryInput('');
