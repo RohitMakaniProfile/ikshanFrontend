@@ -650,7 +650,7 @@ const ChatBotNewMobile = ({ onNavigate }) => {
     { id: 'lead-generation', text: 'Lead Generation', subtext: 'Marketing, SEO & Social', emoji: '' },
     { id: 'sales-retention', text: 'Sales & Retention', subtext: 'Calling, Support & Expansion', emoji: '' },
     { id: 'business-strategy', text: 'Business Strategy', subtext: 'Intelligence, Market & Org', emoji: '' },
-    { id: 'save-time', text: 'Save Time', subtext: 'Automation Workflow, Extract PDF, Bulk Task', emoji: '' }
+    { id: 'save-time', text: 'Save Time', subtext: 'Automation Workflow, Bulk Task', emoji: '' }
   ];
 
   // State for custom role input (kept for backward compatibility)
