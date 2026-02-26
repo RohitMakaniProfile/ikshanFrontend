@@ -383,7 +383,7 @@ function ContactSection() {
         </div>
         <div className="about-contact-card">
           <span className="about-contact-label">Email</span>
-          <a href="mailto:infoikshan@gmail.com">infoikshan@gmail.com</a>
+          <a href="mailto:info@ikshan.in">info@ikshan.in</a>
         </div>
       </div>
     </div>
