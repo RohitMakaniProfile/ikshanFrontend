@@ -3,7 +3,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "http://34.180.50.229/api/$1" },
+    { "source": "/api/(.*)", "destination": "http://34.180.50.229:8000/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
