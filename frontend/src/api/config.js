@@ -1,5 +1,5 @@
-/** Hosted FastAPI backend (Swagger: http://35.200.180.98/docs) */
-const HOSTED_API_BASE = 'http://35.200.180.98';
+/** Hosted FastAPI backend (Swagger: http://34.180.50.229/docs) */
+const HOSTED_API_BASE = 'http://34.180.50.229';
 
 /**
  * FastAPI Backend — Base URL for all /api/* requests.
