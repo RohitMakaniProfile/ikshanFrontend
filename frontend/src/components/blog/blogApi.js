@@ -1,23 +1,38 @@
 /**
  * Ikshan Blog API
- * Reads blog posts from /public/blog-data/ (static JSON files)
- * No Supabase or backend needed — works fully offline/local
+ * Primary: ikshan-growth backend (/growth/blog/*)
+ * Fallback: static /blog-data/ JSON (local dev or backend down)
  */
 
-const BASE = "/blog-data";
+const GROWTH_API = "/growth/blog";
+const STATIC = "/blog-data";
 
 export async function getAllPosts({ category = null } = {}) {
-  const res = await fetch(`${BASE}/index.json`);
-  if (!res.ok) return [];
-  let posts = await res.json();
-  if (category) posts = posts.filter((p) => p.category === category);
-  return posts;
+  try {
+    const url = `${GROWTH_API}/posts${category ? `?category=${encodeURIComponent(category)}` : ""}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${res.status}`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : (data.posts || []);
+  } catch {
+    const res = await fetch(`${STATIC}/index.json`);
+    if (!res.ok) return [];
+    let posts = await res.json();
+    if (category) posts = posts.filter((p) => p.category === category);
+    return posts;
+  }
 }
 
 export async function getPostBySlug(slug) {
-  const res = await fetch(`${BASE}/${slug}.json`);
-  if (!res.ok) return null;
-  return await res.json();
+  try {
+    const res = await fetch(`${GROWTH_API}/posts/${slug}`);
+    if (!res.ok) throw new Error(`${res.status}`);
+    return await res.json();
+  } catch {
+    const res = await fetch(`${STATIC}/${slug}.json`);
+    if (!res.ok) return null;
+    return await res.json();
+  }
 }
 
 export async function getRelatedPosts(currentSlug, category) {

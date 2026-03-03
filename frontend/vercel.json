@@ -4,6 +4,7 @@
   "framework": "vite",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "http://34.180.50.229:8000/api/$1" },
+    { "source": "/growth/(.*)", "destination": "http://34.180.50.229:8001/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
