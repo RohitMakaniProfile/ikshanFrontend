@@ -5,7 +5,7 @@ import BlogCard from './BlogCard';
 import { getAllPosts } from './blogApi';
 import './Blog.css';
 
-const CATEGORIES = ['All', 'Growth', 'SEO', 'Analytics', 'Automation', 'Sales', 'Marketing'];
+const CATEGORIES = ['All', 'Lead Generation', 'Sales & Retention', 'Business Strategy', 'Automation'];
 
 export default function BlogPage() {
   const navigate = useNavigate();
