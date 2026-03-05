@@ -2408,6 +2408,7 @@ const ChatBotNew = ({ onNavigate }) => {
               timestamp: new Date(),
               showFinalActions: true
             }]);
+            setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 150);
           }
         } catch (err) {
           console.error('Payment verification failed:', err);
