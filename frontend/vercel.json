@@ -3,10 +3,10 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/v1/(.*)", "destination": "http://34.180.50.229:8000/api/v1/$1" },
-    { "source": "/api/(.*)", "destination": "http://34.180.50.229:8000/api/$1" },
-    { "source": "/playbook/(.*)", "destination": "http://34.180.50.229:8000/playbook/$1" },
-    { "source": "/growth/(.*)", "destination": "http://34.180.50.229:8001/$1" },
+    { "source": "/api/v1/(.*)", "destination": "http://34.60.238.78:8000/api/v1/$1" },
+    { "source": "/api/(.*)", "destination": "http://34.60.238.78:8000/api/$1" },
+    { "source": "/playbook/(.*)", "destination": "http://34.60.238.78:8000/playbook/$1" },
+    { "source": "/growth/(.*)", "destination": "http://34.60.238.78:8001/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
