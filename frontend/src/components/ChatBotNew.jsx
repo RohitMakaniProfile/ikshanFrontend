@@ -3,7 +3,6 @@ import { Send, Bot, User, Mic, MicOff, Package, Box, Gift, ArrowLeft, Plus, Mess
 import ReactMarkdown from 'react-markdown';
 import './ChatBotNew.css';
 import { formatCompaniesForDisplay, analyzeMarketGaps } from '../utils/csvParser';
-import { supabase } from '../lib/supabase';
 
 
 // Generate unique message IDs to prevent React key conflicts
@@ -1095,8 +1094,8 @@ const ChatBotNew = ({ onNavigate }) => {
   const [selectedDomainName, setSelectedDomainName] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [requirement, setRequirement] = useState(null);
-  const [userName, setUserName] = useState(() => localStorage.getItem('ikshan-user-name') || null);
-  const [userEmail, setUserEmail] = useState(() => localStorage.getItem('ikshan-user-email') || null);
+  const [userName, setUserName] = useState(null);
+  const [userEmail, setUserEmail] = useState(null);
   const [flowStage, setFlowStage] = useState('outcome');
 
   // ── AI Agent Session State ─────────────────────────────────
@@ -1250,38 +1249,6 @@ const ChatBotNew = ({ onNavigate }) => {
     }
   }, [chatHistory]);
 
-  // Restore Supabase auth session on mount — works across page reloads & devices
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        const name = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email;
-        const email = session.user.email;
-        setUserName(name);
-        setUserEmail(email);
-        localStorage.setItem('ikshan-user-name', name);
-        localStorage.setItem('ikshan-user-email', email);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        const name = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email;
-        const email = session.user.email;
-        setUserName(name);
-        setUserEmail(email);
-        localStorage.setItem('ikshan-user-name', name);
-        localStorage.setItem('ikshan-user-email', email);
-      } else if (event === 'SIGNED_OUT') {
-        setUserName(null);
-        setUserEmail(null);
-        localStorage.removeItem('ikshan-user-name');
-        localStorage.removeItem('ikshan-user-email');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -1303,7 +1270,7 @@ const ChatBotNew = ({ onNavigate }) => {
     { id: 'lead-generation', text: 'Lead Generation', subtext: 'Marketing, SEO & Social', emoji: '' },
     { id: 'sales-retention', text: 'Sales & Retention', subtext: 'Calling, Support & Expansion', emoji: '' },
     { id: 'business-strategy', text: 'Business Strategy', subtext: 'Intelligence, Market & Org', emoji: '' },
-    { id: 'save-time', text: 'Save Time', subtext: 'Automation Workflow, Bulk Task', emoji: '' }
+    { id: 'save-time', text: 'Save Time', subtext: 'Automation Workflow, Extract PDF, Bulk Task', emoji: '' }
   ];
 
   // State for custom role input (kept for backward compatibility)
@@ -1518,25 +1485,10 @@ const ChatBotNew = ({ onNavigate }) => {
     window.google.accounts.id.prompt();
   };
 
-  const handleGoogleCallback = async (response) => {
-    let name, email;
-    try {
-      const { data, error } = await supabase.auth.signInWithIdToken({
-        provider: 'google',
-        token: response.credential,
-      });
-      if (error) throw error;
-      name = data.user.user_metadata?.full_name || data.user.user_metadata?.name || data.user.email;
-      email = data.user.email;
-    } catch (err) {
-      const payload = JSON.parse(atob(response.credential.split('.')[1]));
-      name = payload.name;
-      email = payload.email;
-    }
-    setUserName(name);
-    setUserEmail(email);
-    localStorage.setItem('ikshan-user-name', name);
-    localStorage.setItem('ikshan-user-email', email);
+  const handleGoogleCallback = (response) => {
+    const payload = JSON.parse(atob(response.credential.split('.')[1]));
+    setUserName(payload.name);
+    setUserEmail(payload.email);
     setShowAuthModal(false);
 
     // If auth-gate before recommendations, proceed directly
@@ -1544,7 +1496,7 @@ const ChatBotNew = ({ onNavigate }) => {
       pendingAuthActionRef.current = null;
       const welcomeMsg = {
         id: getNextMessageId(),
-        text: `Welcome, ${name}! Generating your personalized recommendations...`,
+        text: `Welcome, ${payload.name}! Generating your personalized recommendations...`,
         sender: 'bot',
         timestamp: new Date(),
       };
@@ -1606,6 +1558,8 @@ const ChatBotNew = ({ onNavigate }) => {
     setSelectedDomainName(null);
     setUserRole(null);
     setRequirement(null);
+    setUserName(null);
+    setUserEmail(null);
     setCustomRole('');
     setSelectedCategory(null);
     setCustomCategoryInput('');
@@ -2351,7 +2305,7 @@ const ChatBotNew = ({ onNavigate }) => {
           customer_id: userEmail || `guest_${Date.now()}`,
           customer_email: userEmail || '',
           customer_phone: '',
-          return_url: `${window.location.origin}/api/v1/payments/callback`,
+          return_url: `${window.location.origin}?payment_status=success`,
           description: 'Ikshan Root Cause Analysis — Premium Deep Dive',
           udf1: 'rca_unlock',
           udf2: selectedGoal || ''
@@ -2392,7 +2346,7 @@ const ChatBotNew = ({ onNavigate }) => {
     const paymentStatus = urlParams.get('payment_status');
     const orderId = urlParams.get('order_id');
 
-    if ((paymentStatus === 'success' || paymentStatus === 'charged') && orderId) {
+    if (paymentStatus === 'success' && orderId) {
       // Verify payment server-side
       const verifyPayment = async () => {
         try {
@@ -2408,7 +2362,6 @@ const ChatBotNew = ({ onNavigate }) => {
               timestamp: new Date(),
               showFinalActions: true
             }]);
-            setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 150);
           }
         } catch (err) {
           console.error('Payment verification failed:', err);
@@ -3244,13 +3197,12 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
           </button>
         </div>
         <div className="sidebar-content">
-          <p className="sidebar-section-label">AI Agents</p>
           <div className="products-list">
             {productsData.map((product) => {
               const IconComponent = product.icon;
               return (
                 <div key={product.id} className={`product-card ${product.status}`}>
-                  <IconComponent size={16} className="product-icon-simple" />
+                  <IconComponent size={18} className="product-icon-simple" />
                   <div className="product-text">
                     <span className="product-name">{product.name}</span>
                     <span className="product-subtitle">{product.subtitle}</span>
@@ -3283,9 +3235,8 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
               {flowStage === 'outcome' && (
                 <>
                   {/* Icon removed */}
-
-                  <h1>Scale Your Business with AI Agents —<span className="hero-highlight"> starting today</span></h1>
-                  <p>Tell us your business challenge — get Depth Action Plan in 60 seconds and much more.</p>
+                  <h1>Professional expertise, on-demand—without the salary or recruiting.</h1>
+                  <p>Select what matters most to you right now</p>
                   <div className="suggestions-grid">
                     {outcomeOptions.map((outcome, index) => (
                       <div
@@ -3562,7 +3513,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                             </button>
                           )}
                           {/* Launch RCA Button - Only show if paid */}
-                          {selectedCategory && paymentVerified && (
+                          {selectedCategory && selectedGoal === 'lead-generation' && paymentVerified && (
                             <button
                               onClick={() => handleLaunchRCA(message.userRequirement || selectedCategory)}
                               className="action-btn rca"
@@ -3573,7 +3524,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                         </div>
 
                         {/* Payment Card — Unlock RCA (only show if NOT paid and RCA is relevant) */}
-                        {selectedCategory && !paymentVerified && (
+                        {selectedCategory && selectedGoal === 'lead-generation' && !paymentVerified && (
                           <div className="payment-card">
                             <div className="payment-card-badge">
                               <Lock size={12} /> Premium
@@ -3581,15 +3532,17 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                             <div className="payment-card-content">
                               <div className="payment-card-left">
                                 <h3 className="payment-card-title">
-                                  <Brain size={20} /> Unlock Your 30-Point Strategic Roadmap
+                                  <Brain size={20} /> Unlock Root Cause Analysis
                                 </h3>
                                 <p className="payment-card-desc">
-                                  Get a deep, structured diagnosis of your business with AI-powered website checker, competitor analysis. Figure out the unknown opportunities and AI tools with strategic action pointers.
+                                  Go beyond surface-level solutions. Get a deep, structured diagnosis of your problem with
+                                  AI-powered root cause analysis, data collection framework, and corrective action plan.
                                 </p>
                                 <ul className="payment-card-features">
-                                  <li><BarChart3 size={14} /> <strong>10 Competitive Intel Insights:</strong> Best practices of your top 3 competitors</li>
-                                  <li><Brain size={14} /> <strong>10 High-Leverage Brand &amp; Product Levers:</strong> Command higher margins or better retention</li>
-                                  <li><TrendingUp size={14} /> <strong>10 Conversion Optimizations:</strong> Eliminate friction &amp; aim for 2X sales</li>
+                                  <li><Shield size={14} /> Stage 1: Problem Definition (5 diagnostic questions)</li>
+                                  <li><BarChart3 size={14} /> Stage 2: Data Collection framework</li>
+                                  <li><Brain size={14} /> AI-generated Root Cause Summary</li>
+                                  <li><TrendingUp size={14} /> Corrective Action Plan</li>
                                 </ul>
                               </div>
                               <div className="payment-card-right">

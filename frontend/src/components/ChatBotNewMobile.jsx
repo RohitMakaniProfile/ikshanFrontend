@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Mic, MicOff, Package, Box, Gift, ArrowLeft, Plus, MessageSquare, ShoppingCart, Scale, Users, Sparkles, Youtube, History, X, Menu, Edit3, Chrome, Zap, Brain, Copy, TrendingUp, FileText, Lock, Shield, CreditCard, BarChart3, ChevronDown } from 'lucide-react';
+import { Send, Bot, User, Mic, MicOff, Package, Box, Gift, ArrowLeft, Plus, MessageSquare, ShoppingCart, Scale, Users, Sparkles, Youtube, History, X, Menu, Edit3, Chrome, Zap, Brain, Copy, TrendingUp, FileText, Lock, Shield, CreditCard, BarChart3 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import './ChatBotNewMobile.css';
 import { formatCompaniesForDisplay, analyzeMarketGaps } from '../utils/csvParser';
-import { supabase } from '../lib/supabase';
 
 // Generate unique message IDs to prevent React key conflicts
 const generateUniqueId = () => `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -503,15 +502,6 @@ const IdentityForm = ({ onSubmit }) => {
   );
 };
 
-const MOBILE_PRODUCTS = [
-  { icon: ShoppingCart, name: 'Ecom Listing SEO', subtitle: 'Improve 30-40% Revenue' },
-  { icon: TrendingUp, name: 'Learn from Competitors', subtitle: 'Best Growth Hacks' },
-  { icon: Users, name: 'B2B Lead Gen', subtitle: 'Reddit & LinkedIn Hot Leads' },
-  { icon: Youtube, name: 'Youtube Helper', subtitle: 'Script + Thumbnail + Keywords' },
-  { icon: Sparkles, name: 'AI Team', subtitle: 'Marketing / Ops / HR etc' },
-  { icon: FileText, name: 'Content Creator', subtitle: 'SEO / Insta / Blogs / LinkedIn' },
-];
-
 const ChatBotNewMobile = ({ onNavigate }) => {
   const [messages, setMessages] = useState([
     {
@@ -530,15 +520,14 @@ const ChatBotNewMobile = ({ onNavigate }) => {
   const [selectedDomainName, setSelectedDomainName] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [requirement, setRequirement] = useState(null);
-  const [userName, setUserName] = useState(() => localStorage.getItem('ikshan-user-name') || null);
-  const [userEmail, setUserEmail] = useState(() => localStorage.getItem('ikshan-user-email') || null);
+  const [userName, setUserName] = useState(null);
+  const [userEmail, setUserEmail] = useState(null);
   const [flowStage, setFlowStage] = useState('outcome');
 
   // AI Agent Session State
   const [sessionId, setSessionId] = useState(null);
   const sessionIdRef = useRef(null); // ref mirrors state — avoids React batching delays
   const pendingAuthActionRef = useRef(null); // 'recommendations' when auth-gate is active
-  const googleSignInInProgressRef = useRef(false); // guard against duplicate FedCM requests
   const [dynamicQuestions, setDynamicQuestions] = useState([]);
   const [currentDynamicQIndex, setCurrentDynamicQIndex] = useState(0);
   const [dynamicAnswers, setDynamicAnswers] = useState({});
@@ -593,8 +582,6 @@ const ChatBotNewMobile = ({ onNavigate }) => {
   const [showChatHistory, setShowChatHistory] = useState(false);
   const [speechError, setSpeechError] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showProductDropdown, setShowProductDropdown] = useState(false);
-  const [activeProduct, setActiveProduct] = useState(MOBILE_PRODUCTS[0]);
 
   // Dashboard view state
   const [showDashboard, setShowDashboard] = useState(false);
@@ -630,38 +617,6 @@ const ChatBotNewMobile = ({ onNavigate }) => {
     }
   }, [chatHistory]);
 
-  // Restore Supabase auth session on mount — works across page reloads & devices
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        const name = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email;
-        const email = session.user.email;
-        setUserName(name);
-        setUserEmail(email);
-        localStorage.setItem('ikshan-user-name', name);
-        localStorage.setItem('ikshan-user-email', email);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        const name = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email;
-        const email = session.user.email;
-        setUserName(name);
-        setUserEmail(email);
-        localStorage.setItem('ikshan-user-name', name);
-        localStorage.setItem('ikshan-user-email', email);
-      } else if (event === 'SIGNED_OUT') {
-        setUserName(null);
-        setUserEmail(null);
-        localStorage.removeItem('ikshan-user-name');
-        localStorage.removeItem('ikshan-user-email');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -683,7 +638,7 @@ const ChatBotNewMobile = ({ onNavigate }) => {
     { id: 'lead-generation', text: 'Lead Generation', subtext: 'Marketing, SEO & Social', emoji: '' },
     { id: 'sales-retention', text: 'Sales & Retention', subtext: 'Calling, Support & Expansion', emoji: '' },
     { id: 'business-strategy', text: 'Business Strategy', subtext: 'Intelligence, Market & Org', emoji: '' },
-    { id: 'save-time', text: 'Save Time', subtext: 'Automation Workflow, Bulk Task', emoji: '' }
+    { id: 'save-time', text: 'Save Time', subtext: 'Automation Workflow, Extract PDF, Bulk Task', emoji: '' }
   ];
 
   // State for custom role input (kept for backward compatibility)
@@ -862,10 +817,8 @@ const ChatBotNewMobile = ({ onNavigate }) => {
   }, []);
 
   const handleGoogleSignIn = () => {
-    // Prevent duplicate FedCM requests
-    if (googleSignInInProgressRef.current) return;
-
     if (!isGoogleLoaded || !window.google?.accounts?.id) {
+      // Show error message instead of causing infinite reload loop
       const errorMessage = {
         id: generateUniqueId(),
         text: '⚠️ Google Sign-In is not available right now. You can continue without signing in.',
@@ -880,6 +833,7 @@ const ChatBotNewMobile = ({ onNavigate }) => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
     if (!clientId) {
+      // Show configuration error instead of reloading
       const errorMessage = {
         id: generateUniqueId(),
         text: '⚠️ Sign-in is not configured. Please continue without signing in.',
@@ -891,42 +845,18 @@ const ChatBotNewMobile = ({ onNavigate }) => {
       return;
     }
 
-    googleSignInInProgressRef.current = true;
     window.google.accounts.id.initialize({
       client_id: clientId,
-      callback: (response) => {
-        googleSignInInProgressRef.current = false;
-        handleGoogleCallback(response);
-      },
+      callback: handleGoogleCallback,
     });
-    window.google.accounts.id.prompt((notification) => {
-      if (notification.isDismissedMoment()) {
-        googleSignInInProgressRef.current = false;
-      }
-    });
+
+    window.google.accounts.id.prompt();
   };
 
-  const handleGoogleCallback = async (response) => {
-    // Sign into Supabase with Google token — creates a persistent cross-device session
-    let name, email;
-    try {
-      const { data, error } = await supabase.auth.signInWithIdToken({
-        provider: 'google',
-        token: response.credential,
-      });
-      if (error) throw error;
-      name = data.user.user_metadata?.full_name || data.user.user_metadata?.name || data.user.email;
-      email = data.user.email;
-    } catch (err) {
-      // Fallback: decode from JWT directly
-      const payload = JSON.parse(atob(response.credential.split('.')[1]));
-      name = payload.name;
-      email = payload.email;
-    }
-    setUserName(name);
-    setUserEmail(email);
-    localStorage.setItem('ikshan-user-name', name);
-    localStorage.setItem('ikshan-user-email', email);
+  const handleGoogleCallback = (response) => {
+    const payload = JSON.parse(atob(response.credential.split('.')[1]));
+    setUserName(payload.name);
+    setUserEmail(payload.email);
     setShowAuthModal(false);
 
     // If auth-gate before recommendations, proceed directly
@@ -984,7 +914,7 @@ const ChatBotNewMobile = ({ onNavigate }) => {
           customer_id: userEmail || `guest_${Date.now()}`,
           customer_email: userEmail || '',
           customer_phone: '',
-          return_url: `${window.location.origin}/api/v1/payments/callback`,
+          return_url: `${window.location.origin}?payment_status=success`,
           description: 'Ikshan Root Cause Analysis — Premium Deep Dive',
           udf1: 'rca_unlock',
           udf2: selectedGoal || ''
@@ -1024,7 +954,7 @@ const ChatBotNewMobile = ({ onNavigate }) => {
     const paymentStatus = urlParams.get('payment_status');
     const orderId = urlParams.get('order_id');
 
-    if ((paymentStatus === 'success' || paymentStatus === 'charged') && orderId) {
+    if (paymentStatus === 'success' && orderId) {
       const verifyPayment = async () => {
         try {
           const res = await fetch(`/api/v1/payments/status/${orderId}`);
@@ -1039,7 +969,6 @@ const ChatBotNewMobile = ({ onNavigate }) => {
               timestamp: new Date(),
               showFinalActions: true
             }]);
-            setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 150);
           }
         } catch (err) {
           console.error('Payment verification failed:', err);
@@ -1077,6 +1006,8 @@ const ChatBotNewMobile = ({ onNavigate }) => {
     setSelectedDomainName(null);
     setUserRole(null);
     setRequirement(null);
+    setUserName(null);
+    setUserEmail(null);
     setCustomRole('');
     setSelectedCategory(null);
     setCustomCategoryInput('');
@@ -1237,22 +1168,6 @@ const ChatBotNewMobile = ({ onNavigate }) => {
           setCurrentDynamicQIndex(0);
           setDynamicAnswers({});
           setPersonaLoaded(data.persona_loaded);
-
-          // Add first question as a bot message (same as desktop)
-          const firstQ = data.questions[0];
-          const sectionLabel = firstQ.section_label || 'Diagnostic';
-          const taskMatched = data.task_matched || task;
-          const botMsg = {
-            id: getNextMessageId(),
-            text: `**${sectionLabel}** for *${taskMatched}*\n\n${firstQ.question}`,
-            sender: 'bot',
-            timestamp: new Date(),
-            diagnosticOptions: firstQ.options,
-            sectionIndex: 0,
-            sectionKey: firstQ.section,
-            allowsFreeText: firstQ.allows_free_text !== false,
-          };
-          setMessages(prev => [...prev, botMsg]);
           setFlowStage('dynamic-questions');
           setIsTyping(false);
           return;
@@ -1274,14 +1189,6 @@ const ChatBotNewMobile = ({ onNavigate }) => {
     setDynamicAnswers(newAnswers);
     setDynamicFreeText('');
 
-    // Add user's answer as a chat message
-    const userMsg = {
-      id: getNextMessageId(),
-      text: answer,
-      sender: 'user',
-      timestamp: new Date()
-    };
-
     // Record answer in backend session
     try {
       const sid = getSessionId();
@@ -1300,29 +1207,11 @@ const ChatBotNewMobile = ({ onNavigate }) => {
       console.log('Session tracking: dynamic answer', e);
     }
 
-    const nextIndex = currentDynamicQIndex + 1;
-
-    if (nextIndex < dynamicQuestions.length) {
-      // Add next question as bot message
-      const nextQ = dynamicQuestions[nextIndex];
-      const sectionLabel = nextQ.section_label || 'Diagnostic';
-      const botMsg = {
-        id: getNextMessageId(),
-        text: `**${sectionLabel}**\n\n${nextQ.question}`,
-        sender: 'bot',
-        timestamp: new Date(),
-        diagnosticOptions: nextQ.options,
-        sectionIndex: nextIndex,
-        sectionKey: nextQ.section,
-        allowsFreeText: nextQ.allows_free_text !== false,
-      };
-      setMessages(prev => [...prev, userMsg, botMsg]);
-      setCurrentDynamicQIndex(nextIndex);
+    // Move to next question or get recommendations
+    if (currentDynamicQIndex < dynamicQuestions.length - 1) {
+      setCurrentDynamicQIndex(currentDynamicQIndex + 1);
     } else {
       // All dynamic questions answered — gate behind auth
-      setMessages(prev => [...prev, userMsg]);
-      setCurrentDynamicQIndex(nextIndex);
-
       if (userEmail) {
         await showPersonalizedRecommendations();
       } else {
@@ -2533,42 +2422,14 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
         </div>
 
         <div className="header-products">
-          <div
-            className="product-chip-trigger"
-            onClick={() => setShowProductDropdown(prev => !prev)}
-          >
-            <span>Products</span>
-            <ChevronDown size={12} className={`dropdown-arrow${showProductDropdown ? ' rotated' : ''}`} />
+          <div className="products-scroll">
+            <div className="product-chip"><ShoppingCart size={14} /> <span>Ecom Listing SEO</span></div>
+            <div className="product-chip"><TrendingUp size={14} /> <span>Learn from Competitors</span></div>
+            <div className="product-chip"><Users size={14} /> <span>B2B Lead Gen</span></div>
+            <div className="product-chip"><Youtube size={14} /> <span>Youtube Helper</span></div>
+            <div className="product-chip"><Sparkles size={14} /> <span>AI Team</span></div>
+            <div className="product-chip"><FileText size={14} /> <span>Content Creator</span></div>
           </div>
-
-          {showProductDropdown && (
-            <>
-              <div className="product-dropdown-overlay" onClick={() => setShowProductDropdown(false)} />
-              <div className="product-dropdown-menu">
-                {MOBILE_PRODUCTS.map((product, index) => {
-                  const Icon = product.icon;
-                  return (
-                    <div
-                      key={index}
-                      className={`product-dropdown-item${activeProduct.name === product.name ? ' active' : ''}`}
-                      onClick={() => {
-                        setActiveProduct(product);
-                        setShowProductDropdown(false);
-                      }}
-                    >
-                      <div className="product-dropdown-icon">
-                        <Icon size={15} />
-                      </div>
-                      <div className="product-dropdown-text">
-                        <span className="product-dropdown-name">{product.name}</span>
-                        {product.subtitle && <span className="product-dropdown-subtitle">{product.subtitle}</span>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
         </div>
 
         <div className="header-actions">
@@ -2586,9 +2447,8 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
             {flowStage === 'outcome' && (
               <>
                 {/* Icon removed */}
-
-                <h1>Scale Your Business with AI Agents —<span className="hero-highlight"> starting today</span></h1>
-                <p>Tell us your business challenge — get Depth Action Plan in 60 seconds and much more.</p>
+                <h1>Professional expertise, on-demand—without the salary or recruiting.</h1>
+                <p>Select what matters most to you right now</p>
                 <div className="suggestions-grid">
                   {outcomeOptions.map((outcome, index) => (
                     <div
@@ -2785,15 +2645,16 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                           <div className="payment-card-content">
                             <div className="payment-card-left">
                               <h3 className="payment-card-title">
-                                <Brain size={20} /> Unlock Your 30-Point Strategic Roadmap
+                                <Brain size={20} /> Unlock Root Cause Analysis
                               </h3>
                               <p className="payment-card-desc">
-                                Get a deep, structured diagnosis of your business with AI-powered website checker, competitor analysis. Figure out the unknown opportunities and AI tools with strategic action pointers.
+                                Get a deep, structured diagnosis with AI-powered root cause analysis and corrective action plan.
                               </p>
                               <ul className="payment-card-features">
-                                <li><BarChart3 size={14} /> <strong>10 Competitive Intel Insights</strong></li>
-                                <li><Brain size={14} /> <strong>10 Brand &amp; Product Levers</strong></li>
-                                <li><TrendingUp size={14} /> <strong>10 Conversion Optimizations</strong></li>
+                                <li><Shield size={14} /> Problem Definition</li>
+                                <li><BarChart3 size={14} /> Data Collection</li>
+                                <li><Brain size={14} /> Root Cause Summary</li>
+                                <li><TrendingUp size={14} /> Action Plan</li>
                               </ul>
                             </div>
                             <div className="payment-card-right">
