@@ -1,9 +1,80 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Mic, MicOff, Package, Box, Gift, ArrowLeft, Plus, MessageSquare, ShoppingCart, Scale, Users, Sparkles, Youtube, History, X, Menu, Edit3, Chrome, Zap, Brain, Copy, PanelLeftClose, PanelLeftOpen, ExternalLink, Star, Settings, FileText, BarChart3, ScanLine, Video, Calendar, Sun, Moon, Type, Globe, TrendingUp, Lock, Shield, CreditCard } from 'lucide-react';
+import { Send, Bot, User, Mic, MicOff, Package, Box, Gift, ArrowLeft, Plus, MessageSquare, ShoppingCart, Scale, Users, Sparkles, Youtube, History, X, Menu, Edit3, Chrome, Zap, Brain, Copy, PanelLeftClose, PanelLeftOpen, ExternalLink, Star, Settings, FileText, BarChart3, ScanLine, Video, Calendar, Sun, Moon, Type, Globe, TrendingUp, Lock, Shield, CreditCard, Code, Activity } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import './ChatBotNew.css';
 import { formatCompaniesForDisplay, analyzeMarketGaps } from '../utils/csvParser';
+import ContextPoolPanel from './ContextPoolPanel';
 
+
+// ── Collapsible playbook section (stable component — must live outside render) ──
+const formatPlaybookSteps = (text) => {
+  // Transform lines like: 1. The "Step Name"  or  1. Step Name  or  ## 1. Step Name
+  // Into: ## **STEP 1 — Step Name**
+  return text.replace(
+    /^(#{0,3}\s*)?(\d{1,2})\.\s*(?:The\s+)?[""]?([^"""\n]+?)[""]?\s*$/gm,
+    (_, _hashes, num, name) => `## **STEP ${num} — ${name.trim()}**`
+  );
+};
+
+const PlaybookCollapsible = ({ title, icon, color, bg, borderColor, content, isPlaybookSteps }) => {
+  const [expanded, setExpanded] = useState(false);
+  const displayContent = isPlaybookSteps ? formatPlaybookSteps(content) : content;
+  const previewLines = displayContent.split('\n').slice(0, 6).join('\n');
+  return (
+    <div className="playbook-section" style={{
+      background: bg,
+      border: `1px solid ${borderColor}`,
+      borderRadius: '14px',
+      padding: '1.25rem',
+      marginBottom: '1rem',
+    }}>
+      <div style={{ fontSize: '0.95rem', fontWeight: 700, color, marginBottom: '0.75rem' }}>
+        {icon} {title}
+      </div>
+      <div
+        className={`playbook-markdown${isPlaybookSteps ? ' playbook-steps' : ''}`}
+        style={{
+          fontSize: '0.88rem',
+          color: '#1e293b',
+          lineHeight: 1.7,
+          maxHeight: expanded ? 'none' : '120px',
+          overflow: 'hidden',
+          position: 'relative',
+        }}
+      >
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{expanded ? displayContent : previewLines}</ReactMarkdown>
+        {!expanded && (
+          <div style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: '50px',
+            background: `linear-gradient(transparent, ${bg.includes('#f0f9ff') ? '#e8f4fc' : bg.includes('#faf5ff') ? '#f3edff' : bg.includes('#ecfdf5') ? '#e6f9f0' : '#fff5e6'})`,
+          }}/>
+        )}
+      </div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          marginTop: '0.5rem',
+          padding: '0.4rem 1rem',
+          fontSize: '0.82rem',
+          fontWeight: 600,
+          color,
+          background: 'rgba(255,255,255,0.7)',
+          border: `1px solid ${borderColor}`,
+          borderRadius: '8px',
+          cursor: 'pointer',
+          transition: 'all 0.2s',
+        }}
+      >
+        {expanded ? '▲ Show less' : '▼ Read more'}
+      </button>
+    </div>
+  );
+};
 
 // Generate unique message IDs to prevent React key conflicts
 const generateUniqueId = () => `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -1088,6 +1159,11 @@ const ChatBotNew = ({ onNavigate }) => {
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [taskClickProcessing, setTaskClickProcessing] = useState(false);
+  const [outcomeClickProcessing, setOutcomeClickProcessing] = useState(false);
+  const [domainClickProcessing, setDomainClickProcessing] = useState(false);
+  const [answerProcessing, setAnswerProcessing] = useState(false);
+  const [loadingPhase, setLoadingPhase] = useState(''); // '', 'tools', 'diagnostic'
   const [selectedGoal, setSelectedGoal] = useState(null);
   const [selectedDomain, setSelectedDomain] = useState(null);
   const [selectedSubDomain, setSelectedSubDomain] = useState(null);
@@ -1107,6 +1183,30 @@ const ChatBotNew = ({ onNavigate }) => {
   const [dynamicAnswers, setDynamicAnswers] = useState({});
   const [personaLoaded, setPersonaLoaded] = useState(null);
   const [dynamicFreeText, setDynamicFreeText] = useState('');
+  const [rcaMode, setRcaMode] = useState(false); // Claude adaptive RCA mode
+  const [crawlStatus, setCrawlStatus] = useState(''); // '', 'in_progress', 'complete', 'failed', 'skipped'
+  const crawlPollRef = useRef(null); // interval ref for polling crawl status
+  const crawlSummaryRef = useRef(null); // stash crawl summary to show at right time
+  const pendingDiagnosticDataRef = useRef(null); // stash diagnostic data while URL input is shown
+  const pendingReportDataRef = useRef(null); // stash {rcaSummary, crawlPoints} for post-auth
+
+  // ── Scale Questions State ──────────────────────────────────
+  const [scaleQuestions, setScaleQuestions] = useState([]);
+  const [currentScaleQIndex, setCurrentScaleQIndex] = useState(0);
+  const scaleAnswersRef = useRef({}); // ref to avoid stale closures
+  const [scaleFormSelections, setScaleFormSelections] = useState({}); // {questionId: selectedOption}
+  const [scaleFormSubmitted, setScaleFormSubmitted] = useState(false);
+
+  // ── Precision Questions State ──────────────────────────────
+  const [precisionQuestions, setPrecisionQuestions] = useState([]);
+  const [currentPrecisionQIndex, setCurrentPrecisionQIndex] = useState(0);
+  const pendingPrecisionDataRef = useRef(null); // stash {rcaSummaryText, crawlPoints} while precision Qs run
+
+  // ── AI Playbook State ──────────────────────────────────────
+  const [playbookStage, setPlaybookStage] = useState(''); // '', 'starting', 'gap-questions', 'generating', 'complete'
+  const [playbookGapQuestions, setPlaybookGapQuestions] = useState('');
+  const [playbookGapAnswer, setPlaybookGapAnswer] = useState('');
+  const [playbookGapSelections, setPlaybookGapSelections] = useState({}); // {Q1: 'A) option', Q2: 'B) option'}
 
   const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -1151,7 +1251,16 @@ const ChatBotNew = ({ onNavigate }) => {
   const [speechError, setSpeechError] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
+  const [contextPoolOpen, setContextPoolOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [thinkingPhraseIndex, setThinkingPhraseIndex] = useState(0);
+
+  // Insights + ICP state
+  const [businessInsights, setBusinessInsights] = useState(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+
+  // Business Intelligence Verdict (pre-RCA, crawl-powered)
+  const [businessIntelVerdict, setBusinessIntelVerdict] = useState(null);
 
 
   // User preferences state
@@ -1389,6 +1498,26 @@ const ChatBotNew = ({ onNavigate }) => {
     scrollToBottom();
   }, [messages]);
 
+  // Rotate thinking phrases when loading
+  const THINKING_PHRASES = [
+    '🧠 Thinking...',
+    '🔍 Searching the best tools...',
+    '📊 Analyzing your space...',
+    '🎯 Matching to your needs...',
+    '⚡ Almost there...',
+  ];
+
+  useEffect(() => {
+    if (!taskClickProcessing) {
+      setThinkingPhraseIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setThinkingPhraseIndex(prev => (prev + 1) % THINKING_PHRASES.length);
+    }, 2200);
+    return () => clearInterval(interval);
+  }, [taskClickProcessing]);
+
   // Initialize voice recognition
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -1496,12 +1625,13 @@ const ChatBotNew = ({ onNavigate }) => {
       pendingAuthActionRef.current = null;
       const welcomeMsg = {
         id: getNextMessageId(),
-        text: `Welcome, ${payload.name}! Generating your personalized recommendations...`,
+        text: `Welcome, ${payload.name}! Generating your **AI Growth Playbook**...`,
         sender: 'bot',
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, welcomeMsg]);
-      showPersonalizedRecommendations();
+      pendingReportDataRef.current = null;
+      startPlaybook();
       return;
     }
 
@@ -1596,6 +1726,15 @@ const ChatBotNew = ({ onNavigate }) => {
     setPersonaLoaded(null);
     setDynamicFreeText('');
 
+    // Reset processing guards
+    setTaskClickProcessing(false);
+    setOutcomeClickProcessing(false);
+    setDomainClickProcessing(false);
+    setAnswerProcessing(false);
+
+    // Reset Claude RCA mode
+    setRcaMode(false);
+
     // Reset RCA state
     setRcaActive(false);
     setRcaStage('problem-definition');
@@ -1617,6 +1756,8 @@ const ChatBotNew = ({ onNavigate }) => {
 
   // Handle outcome selection (Question 1)
   const handleOutcomeClick = async (outcome) => {
+    if (outcomeClickProcessing) return;
+    setOutcomeClickProcessing(true);
     setSelectedGoal(outcome.id);
 
     const userMessage = {
@@ -1655,10 +1796,13 @@ const ChatBotNew = ({ onNavigate }) => {
     }
 
     saveToSheet(`Selected Outcome: ${outcome.text}`, '', '', '');
+    setOutcomeClickProcessing(false);
   };
 
   // Handle domain selection (Question 2)
   const handleDomainClick = async (domain) => {
+    if (domainClickProcessing) return;
+    setDomainClickProcessing(true);
     setSelectedDomainName(domain);
 
     const userMessage = {
@@ -1696,10 +1840,14 @@ const ChatBotNew = ({ onNavigate }) => {
     }
 
     saveToSheet(`Selected Domain: ${domain}`, '', '', '');
+    setDomainClickProcessing(false);
   };
 
-  // Handle task selection (Question 3) - Loads diagnostic sections from persona docs
+  // Handle task selection (Question 3) - Loads diagnostic via Claude RCA or fallback
   const handleTaskClick = async (task) => {
+    // Prevent duplicate clicks during loading
+    if (taskClickProcessing) return;
+    setTaskClickProcessing(true);
     setSelectedCategory(task);
 
     const userMessage = {
@@ -1711,11 +1859,13 @@ const ChatBotNew = ({ onNavigate }) => {
     setMessages(prev => [...prev, userMessage]);
     saveToSheet(`Selected Task: ${task}`, '', '', '');
 
-    // Load sections from pre-parsed persona docs (instant, no GPT)
+    // Load diagnostic questions (Claude RCA or fallback)
     setIsTyping(true);
+    setLoadingPhase('tools');
     try {
       const sid = await ensureSession();
       if (sid) {
+        setLoadingPhase('diagnostic');
         const res = await fetch(`${API_BASE}/api/v1/agent/session/task`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1724,28 +1874,45 @@ const ChatBotNew = ({ onNavigate }) => {
         const data = await res.json();
 
         if (data.questions && data.questions.length > 0) {
+          const isRca = data.rca_mode === true;
+          setRcaMode(isRca);
           setDynamicQuestions(data.questions);
           setCurrentDynamicQIndex(0);
           setDynamicAnswers({});
           setPersonaLoaded(data.persona_loaded);
 
-          // Add first section as a bot message in chat view
-          const firstQ = data.questions[0];
-          const sectionLabel = firstQ.section_label || 'Diagnostic';
-          const taskMatched = data.task_matched || task;
-          const botMsg = {
+          // ── Show early recommendations if available ──────────
+          if (data.early_recommendations && data.early_recommendations.length > 0) {
+            const earlyRecsMsg = {
+              id: getNextMessageId(),
+              text: data.early_recommendations_message || 'Based on your goal and task, here are some tools that could help you right away.',
+              sender: 'bot',
+              timestamp: new Date(),
+              isEarlyRecommendation: true,
+              earlyTools: data.early_recommendations,
+            };
+            setMessages(prev => [...prev, earlyRecsMsg]);
+          }
+
+          // ── Show URL input IMMEDIATELY after tool recommendations ──
+          // Stash the diagnostic data — we'll resume diagnostic after URL is submitted or skipped
+          pendingDiagnosticDataRef.current = {
+            data,
+            isRca: data.rca_mode === true,
+            task,
+          };
+
+          const urlPromptMsg = {
             id: getNextMessageId(),
-            text: `**${sectionLabel}** for *${taskMatched}*\n\n${firstQ.question}`,
+            text: `Great — here are tools that match your space.\nNow let's look at **YOUR business** specifically.`,
             sender: 'bot',
             timestamp: new Date(),
-            diagnosticOptions: firstQ.options,
-            sectionIndex: 0,
-            sectionKey: firstQ.section,
-            allowsFreeText: firstQ.allows_free_text !== false,
+            showBusinessUrlInput: true, // new flag for the URL input component
           };
-          setMessages(prev => [...prev, botMsg]);
-          setFlowStage('diagnostic');
+          setMessages(prev => [...prev, urlPromptMsg]);
+          setFlowStage('url-input');
           setIsTyping(false);
+          setLoadingPhase('');
           return;
         }
       }
@@ -1753,13 +1920,101 @@ const ChatBotNew = ({ onNavigate }) => {
       console.log('Diagnostic section load failed, falling back', e);
     }
     setIsTyping(false);
+    setTaskClickProcessing(false);
+    setLoadingPhase('');
 
     // Fallback: directly show solution stack if backend call fails
     showSolutionStack(task);
   };
 
-  // Handle diagnostic option click — in-chat flow
+  // ── Helper: proceed to playbook/auth after all questions done ──
+  const proceedToReport = async (rcaSummaryText, crawlPoints) => {
+    if (userEmail) {
+      await startPlaybook();
+    } else {
+      pendingAuthActionRef.current = 'recommendations';
+      pendingReportDataRef.current = { rcaSummary: rcaSummaryText, crawlPoints };
+      const authMsg = {
+        id: getNextMessageId(),
+        text: `Your diagnostic is ready.\n\nSign in to unlock your **AI Growth Playbook**.`,
+        sender: 'bot',
+        timestamp: new Date(),
+        showAuthGate: true,
+      };
+      setMessages(prev => [...prev, authMsg]);
+      setFlowStage('auth-gate');
+    }
+  };
+
+  // ── Handle precision question answers ──
+  const handlePrecisionAnswer = async (answer) => {
+    const currentPQ = precisionQuestions[currentPrecisionQIndex];
+
+    // Show user message
+    const userMsg = {
+      id: getNextMessageId(),
+      text: answer,
+      sender: 'user',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, userMsg]);
+
+    // Record answer on backend (reuse existing /session/answer endpoint)
+    try {
+      const sid = getSessionId();
+      if (sid) {
+        await fetch(`${API_BASE}/api/v1/agent/session/answer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sid,
+            question_index: 900 + currentPrecisionQIndex, // high index to distinguish
+            answer: `[${currentPQ?.type || 'precision'}] ${answer}`,
+          }),
+        });
+      }
+    } catch (e) {
+      console.log('Precision answer save failed (non-blocking)', e);
+    }
+
+    const nextIdx = currentPrecisionQIndex + 1;
+
+    if (nextIdx < precisionQuestions.length) {
+      // Show next precision question
+      setCurrentPrecisionQIndex(nextIdx);
+      const nextPQ = precisionQuestions[nextIdx];
+
+      const pqParts = [];
+      if (nextPQ.insight) pqParts.push(`💡 *${nextPQ.insight}*`);
+      pqParts.push(nextPQ.question);
+
+      const botMsg = {
+        id: getNextMessageId(),
+        text: `**${nextPQ.section_label || 'Precision Question'}**\n\n${pqParts.join('\n\n')}`,
+        sender: 'bot',
+        timestamp: new Date(),
+        diagnosticOptions: nextPQ.options || [],
+        sectionIndex: nextIdx,
+        sectionKey: `precision_${nextPQ.type}`,
+        allowsFreeText: true,
+        isPrecisionQuestion: true,
+        precisionIndex: nextIdx,
+      };
+      setMessages(prev => [...prev, botMsg]);
+    } else {
+      // All precision questions answered — proceed to report
+      const pendingData = pendingPrecisionDataRef.current;
+      pendingPrecisionDataRef.current = null;
+      const rcaSummary = pendingData?.rcaSummary || '';
+      const crawlPoints = pendingData?.crawlPoints || [];
+      await proceedToReport(rcaSummary, crawlPoints);
+    }
+  };
+
+  // Handle diagnostic option click — in-chat flow (supports both RCA & fallback)
   const handleDynamicAnswer = async (answer) => {
+    if (answerProcessing) return;
+    setAnswerProcessing(true);
     const currentQ = dynamicQuestions[currentDynamicQIndex];
     const newAnswers = { ...dynamicAnswers, [currentDynamicQIndex]: answer };
     setDynamicAnswers(newAnswers);
@@ -1772,6 +2027,184 @@ const ChatBotNew = ({ onNavigate }) => {
       sender: 'user',
       timestamp: new Date()
     };
+
+    saveToSheet(`Diagnostic (${currentQ?.section || 'q' + currentDynamicQIndex}): ${answer}`, '', '', '');
+
+    // ── RCA Mode: call backend → Claude generates next question ──
+    if (rcaMode) {
+      setMessages(prev => [...prev, userMsg]);
+      setCurrentDynamicQIndex(prev => prev + 1);
+      setIsTyping(true);
+
+      try {
+        const sid = getSessionId();
+        if (sid) {
+          const res = await fetch(`${API_BASE}/api/v1/agent/session/answer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: sid,
+              question_index: currentDynamicQIndex,
+              answer: answer
+            })
+          });
+          const data = await res.json();
+
+          if (data.all_answered) {
+            // Claude says we have enough — try precision questions first, then report
+            setIsTyping(false);
+
+            const rcaSummaryText = data.acknowledgment
+              ? `${data.acknowledgment}${data.rca_summary ? '\n\n' + data.rca_summary : ''}`
+              : data.rca_summary || '';
+
+            // Resolve crawl points now
+            let crawlPoints = [];
+            if (crawlStatus === 'in_progress') {
+              // Wait for crawl to finish
+              crawlPoints = await new Promise((resolve) => {
+                const waitForCrawl = setInterval(async () => {
+                  try {
+                    const sid = getSessionId();
+                    const statusRes = await fetch(`${API_BASE}/api/v1/agent/session/${sid}/crawl-status`);
+                    const statusData = await statusRes.json();
+                    if (statusData.crawl_status === 'complete' || statusData.crawl_status === 'failed') {
+                      setCrawlStatus(statusData.crawl_status);
+                      clearInterval(waitForCrawl);
+                      const pts = (statusData.crawl_status === 'complete' && statusData.crawl_summary?.points)
+                        ? statusData.crawl_summary.points : [];
+                      resolve(pts);
+                    }
+                  } catch (e) {
+                    console.log('Crawl wait poll failed', e);
+                    clearInterval(waitForCrawl);
+                    resolve([]);
+                  }
+                }, 2000);
+              });
+            } else {
+              crawlPoints = crawlSummaryRef.current?.points || [];
+              crawlSummaryRef.current = null;
+            }
+
+            // Try to fetch precision questions
+            setIsTyping(true);
+            try {
+              const sid = getSessionId();
+              const precRes = await fetch(`${API_BASE}/api/v1/agent/session/precision-questions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sid }),
+              });
+              const precData = await precRes.json();
+
+              if (precData.available && precData.questions && precData.questions.length > 0) {
+                // Show precision questions phase
+                setIsTyping(false);
+                setPrecisionQuestions(precData.questions);
+                setCurrentPrecisionQIndex(0);
+                pendingPrecisionDataRef.current = { rcaSummary: rcaSummaryText, crawlPoints };
+                setFlowStage('precision-questions');
+
+                // Transition message
+                const transMsg = {
+                  id: getNextMessageId(),
+                  text: `I've cross-referenced your answers with what I found on your website. I have **3 precision questions** that dig into the gaps I spotted.`,
+                  sender: 'bot',
+                  timestamp: new Date(),
+                };
+
+                // First precision question
+                const pq = precData.questions[0];
+                const pqParts = [];
+                if (pq.insight) pqParts.push(`💡 *${pq.insight}*`);
+                pqParts.push(pq.question);
+
+                const pqMsg = {
+                  id: getNextMessageId(),
+                  text: `**${pq.section_label || 'Precision Question'}**\n\n${pqParts.join('\n\n')}`,
+                  sender: 'bot',
+                  timestamp: new Date(),
+                  diagnosticOptions: pq.options || [],
+                  sectionIndex: 0,
+                  sectionKey: `precision_${pq.type}`,
+                  allowsFreeText: true,
+                  isPrecisionQuestion: true,
+                  precisionIndex: 0,
+                };
+
+                setMessages(prev => [...prev, transMsg, pqMsg]);
+                setAnswerProcessing(false);
+                return;
+              }
+            } catch (e) {
+              console.log('Precision questions failed, proceeding to report', e);
+            }
+
+            // No precision questions — go directly to report/auth
+            setIsTyping(false);
+            setAnswerProcessing(false);
+            await proceedToReport(rcaSummaryText, crawlPoints);
+            return;
+          }
+
+          // Claude gave us the next question
+          if (data.next_question) {
+            const nextQ = data.next_question;
+            setDynamicQuestions(prev => [...prev, nextQ]);
+
+            // Build text: insight + question (no acknowledgment)
+            const insight = nextQ.insight || data.insight || '';
+            const parts = [];
+            if (insight) parts.push(`💡 *${insight}*`);
+            parts.push(nextQ.question);
+            const botText = parts.join('\n\n');
+
+            const botMsg = {
+              id: getNextMessageId(),
+              text: botText,
+              sender: 'bot',
+              timestamp: new Date(),
+              diagnosticOptions: nextQ.options || [],
+              sectionIndex: currentDynamicQIndex + 1,
+              sectionKey: nextQ.section,
+              allowsFreeText: nextQ.allows_free_text !== false,
+              isRcaQuestion: true,
+              insightText: insight,
+            };
+            setMessages(prev => [...prev, botMsg]);
+            setIsTyping(false);
+            setAnswerProcessing(false);
+            return;
+          }
+        }
+      } catch (e) {
+        console.log('RCA answer submission failed', e);
+      }
+
+      // If Claude fails, just end the diagnostic
+      setIsTyping(false);
+      crawlSummaryRef.current = null;
+      if (userEmail) {
+        await startPlaybook();
+      } else {
+        pendingAuthActionRef.current = 'recommendations';
+        pendingReportDataRef.current = { rcaSummary: '', crawlPoints: [] };
+        const authMsg = {
+          id: getNextMessageId(),
+          text: `Your diagnostic is ready.\n\nSign in to unlock your **AI Growth Playbook**.`,
+          sender: 'bot',
+          timestamp: new Date(),
+          showAuthGate: true,
+        };
+        setMessages(prev => [...prev, authMsg]);
+        setFlowStage('auth-gate');
+      }
+      setAnswerProcessing(false);
+      return;
+    }
+
+    // ── Fallback Mode: static pre-loaded questions ──────────────
 
     // Record answer in backend session
     try {
@@ -1790,8 +2223,6 @@ const ChatBotNew = ({ onNavigate }) => {
     } catch (e) {
       console.log('Session tracking: diagnostic answer', e);
     }
-
-    saveToSheet(`Diagnostic (${currentQ.section || 'q' + currentDynamicQIndex}): ${answer}`, '', '', '');
 
     const nextIndex = currentDynamicQIndex + 1;
 
@@ -1815,16 +2246,16 @@ const ChatBotNew = ({ onNavigate }) => {
       // All sections answered — gate behind auth
       setMessages(prev => [...prev, userMsg]);
       setCurrentDynamicQIndex(nextIndex);
+      crawlSummaryRef.current = null;
 
       if (userEmail) {
-        // Already signed in — go straight to recommendations
-        await showPersonalizedRecommendations();
+        await startPlaybook();
       } else {
-        // Show auth gate in chat
         pendingAuthActionRef.current = 'recommendations';
+        pendingReportDataRef.current = { rcaSummary: '', crawlPoints: [] };
         const authMsg = {
           id: getNextMessageId(),
-          text: `Great — your diagnostic is complete!\n\nSign in to unlock your **personalized AI tool recommendations**.`,
+          text: `Your diagnostic is ready.\n\nSign in to unlock your **AI Growth Playbook**.`,
           sender: 'bot',
           timestamp: new Date(),
           showAuthGate: true,
@@ -1842,10 +2273,718 @@ const ChatBotNew = ({ onNavigate }) => {
     }
   };
 
+  // Handle website URL submission for audience analysis
+  const handleWebsiteSubmit = async (websiteUrl) => {
+    if (!websiteUrl || !websiteUrl.trim()) return;
+
+    let url = websiteUrl.trim();
+    // Auto-prepend https:// if missing
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+
+    // Show user's input
+    const userMsg = {
+      id: getNextMessageId(),
+      text: url,
+      sender: 'user',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, userMsg]);
+    setIsTyping(true);
+
+    try {
+      const sid = getSessionId();
+      if (sid) {
+        const res = await fetch(`${API_BASE}/api/v1/agent/session/website`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sid, website_url: url })
+        });
+        const data = await res.json();
+
+        if (data.audience_insights) {
+          let insightText = `## Audience Analysis for Your Business\n\n`;
+
+          if (data.business_summary) {
+            insightText += `${data.business_summary}\n\n`;
+          }
+
+          insightText += `---\n\n`;
+
+          if (data.audience_insights.intended_audience) {
+            insightText += `**🎯 Who you're targeting:**\n${data.audience_insights.intended_audience}\n\n`;
+          }
+
+          if (data.audience_insights.actual_audience) {
+            insightText += `**👥 Who your content actually reaches:**\n${data.audience_insights.actual_audience}\n\n`;
+          }
+
+          if (data.audience_insights.mismatch_analysis) {
+            insightText += `**⚡ The Gap:**\n${data.audience_insights.mismatch_analysis}\n\n`;
+          }
+
+          if (data.audience_insights.recommendations && data.audience_insights.recommendations.length > 0) {
+            insightText += `**💡 Quick Wins:**\n`;
+            data.audience_insights.recommendations.forEach((rec, i) => {
+              insightText += `${i + 1}. ${rec}\n`;
+            });
+            insightText += `\n`;
+          }
+
+          insightText += `---\n\n`;
+          insightText += `Now let me put together your **personalized tool recommendations** based on everything we've discussed.`;
+
+          const insightMsg = {
+            id: getNextMessageId(),
+            text: insightText,
+            sender: 'bot',
+            timestamp: new Date(),
+            isAudienceInsight: true,
+          };
+          setMessages(prev => [...prev, insightMsg]);
+        }
+      }
+    } catch (e) {
+      console.log('Website analysis failed, continuing to recommendations', e);
+    }
+
+    setIsTyping(false);
+
+    // Proceed to auth gate or playbook
+    crawlSummaryRef.current = null;
+    if (userEmail) {
+      await startPlaybook();
+    } else {
+      pendingAuthActionRef.current = 'recommendations';
+      pendingReportDataRef.current = { rcaSummary: '', crawlPoints: [] };
+      const authMsg = {
+        id: getNextMessageId(),
+        text: `Your diagnostic is ready.\n\nSign in to unlock your **AI Growth Playbook**.`,
+        sender: 'bot',
+        timestamp: new Date(),
+        showAuthGate: true,
+      };
+      setMessages(prev => [...prev, authMsg]);
+      setFlowStage('auth-gate');
+    }
+  };
+
+  // ── Resume diagnostic questions after URL input ──────────────
+  const resumeDiagnosticQuestions = () => {
+    const pending = pendingDiagnosticDataRef.current;
+    if (!pending) return;
+
+    const { data, isRca, task } = pending;
+    pendingDiagnosticDataRef.current = null;
+
+    if (data.questions && data.questions.length > 0) {
+      const firstQ = data.questions[0];
+      const sectionLabel = firstQ.section_label || 'Diagnostic';
+      const taskMatched = data.task_matched || task;
+
+      // Build text: insight (if available) + question (no acknowledgment)
+      const insight = firstQ.insight || data.insight || '';
+      let botText = '';
+      if (isRca) {
+        const parts = [];
+        if (insight) parts.push(`💡 *${insight}*`);
+        parts.push(firstQ.question);
+        botText = parts.join('\n\n');
+      } else {
+        botText = `**${sectionLabel}** for *${taskMatched}*\n\n${firstQ.question}`;
+      }
+
+      const botMsg = {
+        id: getNextMessageId(),
+        text: botText,
+        sender: 'bot',
+        timestamp: new Date(),
+        diagnosticOptions: firstQ.options,
+        sectionIndex: 0,
+        sectionKey: firstQ.section,
+        allowsFreeText: firstQ.allows_free_text !== false,
+        isRcaQuestion: isRca,
+        insightText: insight,
+      };
+      setMessages(prev => [...prev, botMsg]);
+      setFlowStage('diagnostic');
+    }
+  };
+
+  // ── Scale Questions — between URL input and Opus deep-dive ──────
+  const startScaleQuestions = async () => {
+    const sid = getSessionId();
+    if (!sid) { resumeDiagnosticQuestions(); return; }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/agent/session/${sid}/scale-questions`);
+      const data = await res.json();
+
+      if (!data.questions || data.questions.length === 0) {
+        resumeDiagnosticQuestions();
+        return;
+      }
+
+      setScaleQuestions(data.questions);
+      setCurrentScaleQIndex(0);
+      scaleAnswersRef.current = {};
+      setScaleFormSelections({});
+      setScaleFormSubmitted(false);
+
+      // Show single message with all scale questions as a form
+      const introMsg = {
+        id: getNextMessageId(),
+        text: `Before we dive deep, a few quick questions to understand your business context better.`,
+        sender: 'bot',
+        timestamp: new Date(),
+        showScaleForm: true,
+      };
+      setMessages(prev => [...prev, introMsg]);
+      setFlowStage('scale-questions');
+    } catch (e) {
+      console.log('Failed to load scale questions, continuing to diagnostic', e);
+      resumeDiagnosticQuestions();
+    }
+  };
+
+  const handleScaleFormSubmit = async () => {
+    // Validate all questions answered
+    const allAnswered = scaleQuestions.every(q => {
+      const sel = scaleFormSelections[q.id];
+      return q.multiSelect
+        ? Array.isArray(sel) && sel.length > 0
+        : !!sel;
+    });
+    if (!allAnswered) return;
+
+    scaleAnswersRef.current = { ...scaleFormSelections };
+    setScaleFormSubmitted(true);
+
+    // Show summary as user message
+    const summaryLines = scaleQuestions.map(q => {
+      const val = scaleFormSelections[q.id];
+      return `${q.icon} ${Array.isArray(val) ? val.join(', ') : val}`;
+    });
+    const userMsg = {
+      id: getNextMessageId(),
+      text: summaryLines.join('\n'),
+      sender: 'user',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, userMsg]);
+
+    // Submit & transition to diagnostic
+    {
+      setFlowStage('diagnostic');
+      setIsTyping(true);
+
+      // Submit scale answers (fire-and-forget) while fetching diagnostic question
+      const sid = getSessionId();
+      const submitScalePromise = (async () => {
+        try {
+          if (sid) {
+            await fetch(`${API_BASE}/api/v1/agent/session/scale-answers`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                session_id: sid,
+                answers: scaleAnswersRef.current,
+              }),
+            });
+          }
+        } catch (e) {
+          console.log('Scale answers submission failed (non-blocking)', e);
+        }
+      })();
+
+      // Wait for scale answers to submit
+      await submitScalePromise;
+
+      // ── Business Intelligence Verdict — DISABLED (removed from chat) ──
+
+      // Transition message
+      const transitionMsg = {
+        id: getNextMessageId(),
+        text: `Now let me ask you some deeper diagnostic questions to pinpoint the exact bottleneck.`,
+        sender: 'bot',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, transitionMsg]);
+
+      try {
+        if (sid) {
+          const diagRes = await fetch(`${API_BASE}/api/v1/agent/session/start-diagnostic`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sid }),
+          });
+          const diagData = await diagRes.json();
+
+          if (diagData.question && diagData.rca_mode) {
+            // Got context-aware first question — use it instead of stashed
+            const firstQ = diagData.question;
+            setRcaMode(true);
+            setDynamicQuestions([firstQ]);
+            setCurrentDynamicQIndex(0);
+            setDynamicAnswers({});
+
+            const insight = firstQ.insight || diagData.insight || '';
+            const parts = [];
+            if (insight) parts.push(`💡 *${insight}*`);
+            parts.push(firstQ.question);
+
+            const botMsg = {
+              id: getNextMessageId(),
+              text: parts.join('\n\n'),
+              sender: 'bot',
+              timestamp: new Date(),
+              diagnosticOptions: firstQ.options,
+              sectionIndex: 0,
+              sectionKey: firstQ.section,
+              allowsFreeText: firstQ.allows_free_text !== false,
+              isRcaQuestion: true,
+              insightText: insight,
+            };
+            setMessages(prev => [...prev, botMsg]);
+            setIsTyping(false);
+            pendingDiagnosticDataRef.current = null; // Clear stashed — no longer needed
+            return;
+          }
+        }
+      } catch (e) {
+        console.log('Context-aware diagnostic failed, using stashed question', e);
+      }
+
+      // Fallback: use the stashed first question from Q3
+      setIsTyping(false);
+      resumeDiagnosticQuestions();
+    }
+  };
+
+  // ── Business URL submission (right after tool recommendations) ──
+  const handleBusinessUrlSubmit = async (urlInput, gbpInput) => {
+    const websiteUrl = urlInput ? urlInput.trim() : '';
+    const gbpUrl = gbpInput ? gbpInput.trim() : '';
+
+    if (!websiteUrl && !gbpUrl) return;
+
+    // Normalize URLs
+    let normalizedWebsite = websiteUrl;
+    let normalizedGbp = gbpUrl;
+
+    if (normalizedWebsite && !normalizedWebsite.startsWith('http://') && !normalizedWebsite.startsWith('https://')) {
+      normalizedWebsite = 'https://' + normalizedWebsite;
+    }
+    if (normalizedGbp && !normalizedGbp.startsWith('http://') && !normalizedGbp.startsWith('https://')) {
+      normalizedGbp = 'https://' + normalizedGbp;
+    }
+
+    // Validate website URL if provided
+    if (normalizedWebsite) {
+      const domainRegex = /^https?:\/\/[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+/;
+      if (!domainRegex.test(normalizedWebsite)) {
+        const errorMsg = {
+          id: getNextMessageId(),
+          text: `That doesn't look like a valid website URL. Please enter a website address like **yourcompany.com**.`,
+          sender: 'bot',
+          timestamp: new Date(),
+          isError: true,
+        };
+        setMessages(prev => [...prev, errorMsg]);
+        return;
+      }
+    }
+
+    // Validate GBP URL if provided — accept any Google domain link
+    if (normalizedGbp) {
+      const gbpRegex = /^https?:\/\/(www\.)?(google\.(com|co\.[a-z]{2}|[a-z]{2,})(\/maps|\/)|maps\.google\.|maps\.app\.goo\.gl|g\.co\/|goo\.gl\/maps|share\.google\.)/i;
+      if (!gbpRegex.test(normalizedGbp)) {
+        const errorMsg = {
+          id: getNextMessageId(),
+          text: `That doesn't look like a valid Google Business Profile URL. Please paste a link from Google Maps or a Google share link.`,
+          sender: 'bot',
+          timestamp: new Date(),
+          isError: true,
+        };
+        setMessages(prev => [...prev, errorMsg]);
+        return;
+      }
+    }
+
+    // Show user's input
+    const displayParts = [];
+    if (normalizedWebsite) displayParts.push(normalizedWebsite);
+    if (normalizedGbp) displayParts.push('📍 ' + normalizedGbp);
+    const userMsg = {
+      id: getNextMessageId(),
+      text: displayParts.join('\n'),
+      sender: 'user',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, userMsg]);
+
+    // Fire async crawl job (non-blocking)
+    try {
+      const sid = getSessionId();
+      if (sid) {
+        const res = await fetch(`${API_BASE}/api/v1/agent/session/url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sid,
+            business_url: normalizedWebsite || '',
+            gbp_url: normalizedGbp || '',
+          })
+        });
+        const data = await res.json();
+
+        if (data.crawl_started) {
+          setCrawlStatus('in_progress');
+          // Start polling for crawl completion
+          startCrawlPolling();
+        }
+
+        // Show confirmation
+        const confirmMsg = {
+          id: getNextMessageId(),
+          text: data.message || `Got it! I'm analyzing your business in the background while we continue.`,
+          sender: 'bot',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, confirmMsg]);
+      }
+    } catch (e) {
+      console.log('URL submission failed, continuing without crawl', e);
+      const fallbackMsg = {
+        id: getNextMessageId(),
+        text: `I'll analyze your website shortly. Let's continue with a few more questions.`,
+        sender: 'bot',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, fallbackMsg]);
+    }
+
+    // Advance to scale questions (which then lead to diagnostic)
+    startScaleQuestions();
+  };
+
+  // ── Skip business URL (allow generic recommendations) ──
+  const handleSkipBusinessUrl = () => {
+    const userMsg = {
+      id: getNextMessageId(),
+      text: "Skip for now",
+      sender: 'user',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, userMsg]);
+
+    // Notify backend
+    try {
+      const sid = getSessionId();
+      if (sid) {
+        fetch(`${API_BASE}/api/v1/agent/session/skip-url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sid })
+        });
+      }
+    } catch (e) {
+      console.log('Skip URL notification failed', e);
+    }
+
+    const skipMsg = {
+      id: getNextMessageId(),
+      text: `No problem — we'll give general recommendations. You can always add your URL later.\n\nLet's continue with a few questions to understand your needs better.`,
+      sender: 'bot',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, skipMsg]);
+    setCrawlStatus('skipped');
+
+    // Advance to scale questions (which then lead to diagnostic)
+    startScaleQuestions();
+  };
+
+  // ── Poll crawl status in background ──
+  const showCrawlSummaryMessage = (summaryData) => {
+    if (!summaryData || !summaryData.points || summaryData.points.length === 0) return;
+    const bullets = summaryData.points.map(p => `• ${p}`).join('\n');
+    const summaryMsg = {
+      id: getNextMessageId(),
+      text: `**🔍 Website Analysis Complete**\n\n${bullets}`,
+      sender: 'bot',
+      timestamp: new Date(),
+      crawlSummaryPoints: summaryData.points,
+      showCrawlDetails: true,
+    };
+    setMessages(prev => [...prev, summaryMsg]);
+  };
+
+  const startCrawlPolling = () => {
+    if (crawlPollRef.current) clearInterval(crawlPollRef.current);
+
+    crawlPollRef.current = setInterval(async () => {
+      try {
+        const sid = getSessionId();
+        if (!sid) return;
+
+        const res = await fetch(`${API_BASE}/api/v1/agent/session/${sid}/crawl-status`);
+        const data = await res.json();
+
+        if (data.crawl_status === 'complete' || data.crawl_status === 'failed') {
+          setCrawlStatus(data.crawl_status);
+          clearInterval(crawlPollRef.current);
+          crawlPollRef.current = null;
+
+          // Stash crawl summary — will be shown after diagnostic completes
+          if (data.crawl_status === 'complete' && data.crawl_summary) {
+            crawlSummaryRef.current = data.crawl_summary;
+          }
+        }
+      } catch (e) {
+        console.log('Crawl status poll failed', e);
+      }
+    }, 3000); // Poll every 3 seconds
+  };
+
+  // Cleanup crawl polling on unmount
+  // (Note: using an effect for cleanup)
+  const crawlPollCleanupRef = useRef(() => {
+    if (crawlPollRef.current) {
+      clearInterval(crawlPollRef.current);
+      crawlPollRef.current = null;
+    }
+  });
+
+  // Skip website analysis and go directly to scale questions → diagnostic
+  const handleSkipWebsite = async () => {
+    const userMsg = {
+      id: getNextMessageId(),
+      text: "Skip for now",
+      sender: 'user',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, userMsg]);
+
+    // Go to scale questions (diagnostic happens after)
+    startScaleQuestions();
+  };
+
   // Handle "Skip" on auth gate — proceed without signing in
   const handleSkipAuth = () => {
     pendingAuthActionRef.current = null;
-    showPersonalizedRecommendations();
+    pendingReportDataRef.current = null;
+    startPlaybook();
+  };
+
+  // ── AI Playbook — replaces old diagnostic report ──
+  const startPlaybook = async () => {
+    setFlowStage('playbook');
+    setPlaybookStage('starting');
+    setIsTyping(true);
+
+    // Show "building playbook" message
+    const startMsg = {
+      id: getNextMessageId(),
+      text: '🚀 Building your **AI Growth Playbook**...\n\nAnalysing business context and ICP...',
+      sender: 'bot',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, startMsg]);
+
+    try {
+      const sid = getSessionId();
+
+      // Step 1: Call /playbook/start → runs Agent 1 + 2
+      const startRes = await fetch(`${API_BASE}/api/v1/playbook/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sid }),
+      });
+
+      if (!startRes.ok) {
+        const errBody = await startRes.json().catch(() => ({}));
+        console.error('Playbook /start error:', startRes.status, errBody);
+        throw new Error(errBody.detail || `Server error ${startRes.status}`);
+      }
+
+      const startData = await startRes.json();
+
+      if (startData.stage === 'gap_questions' && startData.gap_questions) {
+        // Agent 2 has gap questions — show them
+        setPlaybookStage('gap-questions');
+        setPlaybookGapQuestions(startData.gap_questions);
+        setPlaybookGapSelections({});
+        setIsTyping(false);
+
+        const gapMsg = {
+          id: getNextMessageId(),
+          text: '',
+          sender: 'bot',
+          timestamp: new Date(),
+          isPlaybookGapQuestions: true,
+          gapQuestionsText: startData.gap_questions,
+          gapQuestionsParsed: startData.gap_questions_parsed || [],
+          agent1Output: startData.agent1_output,
+          agent2Output: startData.agent2_output,
+        };
+        setMessages(prev => [...prev, gapMsg]);
+        return;
+      }
+
+      // No gap questions — proceed directly to full pipeline
+      setPlaybookStage('generating');
+      setMessages(prev => {
+        const updated = [...prev];
+        const lastBot = updated.findLastIndex(m => m.sender === 'bot');
+        if (lastBot >= 0) {
+          updated[lastBot] = { ...updated[lastBot], text: '🚀 Building your **AI Growth Playbook**...\n\nContext parsed ✓ ICP built ✓\n\nGenerating 10-step playbook, tool matrix & website audit...' };
+        }
+        return updated;
+      });
+
+      // Step 2: Call /playbook/generate
+      const genRes = await fetch(`${API_BASE}/api/v1/playbook/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sid }),
+      });
+
+      if (!genRes.ok) {
+        const errBody = await genRes.json().catch(() => ({}));
+        console.error('Playbook /generate error:', genRes.status, errBody);
+        throw new Error(errBody.detail || `Server error ${genRes.status}`);
+      }
+
+      const genData = await genRes.json();
+
+      setPlaybookStage('complete');
+      setIsTyping(false);
+
+      const playbookMsg = {
+        id: getNextMessageId(),
+        text: '',
+        sender: 'bot',
+        timestamp: new Date(),
+        isPlaybook: true,
+        playbookData: {
+          contextBrief: genData.context_brief || '',
+          icpCard: genData.icp_card || '',
+          playbook: genData.playbook || '',
+          toolMatrix: genData.tool_matrix || '',
+          websiteAudit: genData.website_audit || '',
+          latencies: genData.latencies || {},
+        },
+      };
+      setMessages(prev => [...prev, playbookMsg]);
+
+    } catch (error) {
+      console.error('Playbook generation failed:', error);
+      setIsTyping(false);
+      setPlaybookStage('');
+      const errMsg = {
+        id: getNextMessageId(),
+        text: `Sorry, something went wrong generating your playbook: ${error.message || 'Unknown error'}. Please try again.`,
+        sender: 'bot',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errMsg]);
+    }
+  };
+
+  // ── Handle gap question answer submission ──
+  const handlePlaybookGapSubmit = async () => {
+    // Build answer string from selections
+    const answerParts = Object.entries(playbookGapSelections)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([qId, option]) => `${qId}: ${option}`);
+    const answerText = answerParts.join('\n');
+
+    if (!answerText.trim()) return;
+
+    const userMsg = {
+      id: getNextMessageId(),
+      text: answerText,
+      sender: 'user',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, userMsg]);
+
+    setPlaybookStage('generating');
+    setIsTyping(true);
+    setPlaybookGapSelections({});
+    setPlaybookGapAnswer('');
+
+    const genMsg = {
+      id: getNextMessageId(),
+      text: '🚀 Got it! Now generating your **10-step playbook**, tool matrix & website audit...',
+      sender: 'bot',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, genMsg]);
+
+    try {
+      const sid = getSessionId();
+
+      // Submit gap answers
+      const gapRes = await fetch(`${API_BASE}/api/v1/playbook/gap-answers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sid, answers: answerText }),
+      });
+
+      if (!gapRes.ok) {
+        const errBody = await gapRes.json().catch(() => ({}));
+        throw new Error(errBody.detail || `Server error ${gapRes.status}`);
+      }
+
+      // Generate full playbook
+      const genRes = await fetch(`${API_BASE}/api/v1/playbook/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sid, gap_answers: answerText }),
+      });
+
+      if (!genRes.ok) {
+        const errBody = await genRes.json().catch(() => ({}));
+        throw new Error(errBody.detail || `Server error ${genRes.status}`);
+      }
+
+      const genData = await genRes.json();
+
+      setPlaybookStage('complete');
+      setIsTyping(false);
+
+      const playbookMsg = {
+        id: getNextMessageId(),
+        text: '',
+        sender: 'bot',
+        timestamp: new Date(),
+        isPlaybook: true,
+        playbookData: {
+          contextBrief: genData.context_brief || '',
+          icpCard: genData.icp_card || '',
+          playbook: genData.playbook || '',
+          toolMatrix: genData.tool_matrix || '',
+          websiteAudit: genData.website_audit || '',
+          latencies: genData.latencies || {},
+        },
+      };
+      setMessages(prev => [...prev, playbookMsg]);
+
+    } catch (error) {
+      console.error('Playbook generation failed:', error);
+      setIsTyping(false);
+      setPlaybookStage('');
+      const errMsg = {
+        id: getNextMessageId(),
+        text: `Sorry, something went wrong generating your playbook: ${error.message || 'Unknown error'}. Please try again.`,
+        sender: 'bot',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errMsg]);
+    }
   };
 
   // Get personalized recommendations from backend
@@ -1869,7 +3008,11 @@ const ChatBotNew = ({ onNavigate }) => {
       solutionResponse += `Based on your specific situation in **${domainLabel}** — **${selectedCategory}**, here are the tools I recommend for you.\n\n`;
 
       if (data.summary) {
-        solutionResponse += `> ${data.summary}\n\n`;
+        if (typeof data.summary === 'object' && data.summary.one_liner) {
+          solutionResponse += `> ${data.summary.one_liner}\n\n`;
+        } else if (typeof data.summary === 'string') {
+          solutionResponse += `> ${data.summary}\n\n`;
+        }
       }
 
       solutionResponse += `---\n\n`;
@@ -2406,6 +3549,8 @@ const ChatBotNew = ({ onNavigate }) => {
 
   // Handle RCA option selection in Typeform UI
   const handleRCAOptionSelectTypeform = (option, questionIndex) => {
+    // Prevent selecting again if already answered
+    if (rcaResponses[`q${questionIndex + 1}`]) return;
     // Save response
     const newResponses = { ...rcaResponses, [`q${questionIndex + 1}`]: option };
     setRcaResponses(newResponses);
@@ -2446,6 +3591,8 @@ const ChatBotNew = ({ onNavigate }) => {
 
   // Handle RCA option selection
   const handleRCAOptionSelect = (option, questionIndex) => {
+    // Prevent selecting again if already answered
+    if (rcaResponses[`q${questionIndex + 1}`]) return;
     // Record user response
     const userMessage = {
       id: getNextMessageId(),
@@ -3171,9 +4318,17 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
           <button onClick={handleStartNewIdea} title="New Chat"><Plus size={20} /></button>
           <button onClick={() => setShowChatHistory(true)} title="History"><History size={20} /></button>
           <button onClick={() => onNavigate && onNavigate('about')} title="About Us"><FileText size={20} /></button>
+          <button onClick={() => onNavigate && onNavigate('developer')} title="Developer" className="dev-header-btn"><Code size={20} /></button>
         </div>
 
         <div className="header-right">
+          <button
+            onClick={() => setContextPoolOpen(!contextPoolOpen)}
+            title={contextPoolOpen ? "Close Context Pool" : "Context Pool"}
+            className={`sidebar-toggle context-pool-toggle ${contextPoolOpen ? 'active' : ''}`}
+          >
+            <Activity size={18} />
+          </button>
           <div className="logo-container">
             <img src="/android-chrome-192x192.png" alt="Ikshan" className="logo-img" />
             <h2>Ikshan</h2>
@@ -3242,8 +4397,8 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                       <div
                         key={outcome.id}
                         className="suggestion-card"
-                        onClick={() => handleOutcomeClick(outcome)}
-                        style={{ animationDelay: `${index * 0.1}s`, animation: 'fadeIn 0.5s ease-out forwards' }}
+                        onClick={() => !outcomeClickProcessing && handleOutcomeClick(outcome)}
+                        style={{ animationDelay: `${index * 0.1}s`, animation: 'fadeIn 0.5s ease-out forwards', opacity: outcomeClickProcessing ? 0.5 : 1, pointerEvents: outcomeClickProcessing ? 'none' : 'auto' }}
                       >
                         <h3>{outcome.text}</h3>
                         {outcome.subtext && <p className="goal-subtext">{outcome.subtext}</p>}
@@ -3264,8 +4419,8 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                       <div
                         key={index}
                         className="suggestion-card"
-                        onClick={() => handleDomainClick(domain)}
-                        style={{ animationDelay: `${index * 0.1}s`, animation: 'fadeIn 0.5s ease-out forwards' }}
+                        onClick={() => !domainClickProcessing && handleDomainClick(domain)}
+                        style={{ animationDelay: `${index * 0.1}s`, animation: 'fadeIn 0.5s ease-out forwards', opacity: domainClickProcessing ? 0.5 : 1, pointerEvents: domainClickProcessing ? 'none' : 'auto' }}
                       >
                         <h3>{domain}</h3>
                       </div>
@@ -3282,32 +4437,50 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
 
               {flowStage === 'task' && (
                 <>
-                  {/* Icon removed */}
-                  <h1>What task would you like help with?</h1>
-                  <div className="suggestions-grid">
-                    {getTasksForSelection().map((task, index) => (
-                      <div
-                        key={index}
-                        className="suggestion-card"
-                        onClick={() => handleTaskClick(task)}
-                        style={{ animationDelay: `${index * 0.05}s`, animation: 'fadeIn 0.3s ease-out forwards' }}
-                      >
-                        <h3>{task}</h3>
+                  {taskClickProcessing ? (
+                    <div className="task-loading-state">
+                      <div className="thinking-clean">
+                        <div className="thinking-clean-spinner" />
+                        <p key={thinkingPhraseIndex} className="thinking-clean-text">
+                          {THINKING_PHRASES[thinkingPhraseIndex]}
+                        </p>
+                        <div className="thinking-clean-bar">
+                          <div className="thinking-clean-bar-fill" />
+                        </div>
                       </div>
-                    ))}
-                    <div
-                      className="suggestion-card"
-                      onClick={handleTypeCustomProblem}
-                    >
-                      <h3>Type my own problem...</h3>
                     </div>
-                  </div>
-                  <button
-                    style={{ marginTop: '2rem', background: 'transparent', border: 'none', color: '#6b7280', cursor: 'pointer' }}
-                    onClick={() => { setSelectedDomainName(null); setFlowStage('domain'); }}
-                  >
-                    ← Back
-                  </button>
+                  ) : (
+                    <>
+                      <h1>What task would you like help with?</h1>
+                      <div className="suggestions-grid">
+                        {getTasksForSelection().map((task, index) => (
+                          <div
+                            key={index}
+                            className="suggestion-card"
+                            onClick={() => handleTaskClick(task)}
+                            style={{
+                              animationDelay: `${index * 0.05}s`,
+                              animation: 'fadeIn 0.3s ease-out forwards',
+                            }}
+                          >
+                            <h3>{task}</h3>
+                          </div>
+                        ))}
+                        <div
+                          className="suggestion-card"
+                          onClick={handleTypeCustomProblem}
+                        >
+                          <h3>Type my own problem...</h3>
+                        </div>
+                      </div>
+                      <button
+                        style={{ marginTop: '2rem', background: 'transparent', border: 'none', color: '#6b7280', cursor: 'pointer' }}
+                        onClick={() => { setSelectedDomainName(null); setFlowStage('domain'); }}
+                      >
+                        ← Back
+                      </button>
+                    </>
+                  )}
                 </>
               )}
 
@@ -3322,16 +4495,20 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                       <p className="rca-stage-label">Stage 1: Problem Definition • Question {rcaCurrentQuestionIndex + 1} of {rcaData.problemDefinition.length}</p>
                       <h1>{rcaData.problemDefinition[rcaCurrentQuestionIndex].question}</h1>
                       <div className="suggestions-grid rca-options-grid">
-                        {rcaData.problemDefinition[rcaCurrentQuestionIndex].options.map((option, index) => (
+                        {rcaData.problemDefinition[rcaCurrentQuestionIndex].options.map((option, index) => {
+                          const alreadyAnswered = !!rcaResponses[`q${rcaCurrentQuestionIndex + 1}`];
+                          const isSelected = rcaResponses[`q${rcaCurrentQuestionIndex + 1}`] === option;
+                          return (
                           <div
                             key={index}
-                            className="suggestion-card rca-option-card"
-                            onClick={() => handleRCAOptionSelectTypeform(option, rcaCurrentQuestionIndex)}
-                            style={{ animationDelay: `${index * 0.05}s`, animation: 'fadeIn 0.3s ease-out forwards' }}
+                            className={`suggestion-card rca-option-card${isSelected ? ' selected' : ''}${alreadyAnswered ? ' disabled' : ''}`}
+                            onClick={() => !alreadyAnswered && handleRCAOptionSelectTypeform(option, rcaCurrentQuestionIndex)}
+                            style={{ animationDelay: `${index * 0.05}s`, animation: 'fadeIn 0.3s ease-out forwards', opacity: alreadyAnswered && !isSelected ? 0.5 : 1, pointerEvents: alreadyAnswered ? 'none' : 'auto' }}
                           >
                             <h3>{option}</h3>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       <button
                         onClick={() => {
@@ -3412,7 +4589,7 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                   </div>
                   <div className="message-content">
                     {message.sender === 'bot' ? (
-                      <ReactMarkdown>{message.text}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text || ''}</ReactMarkdown>
                     ) : (
                       message.text
                     )}
@@ -3424,17 +4601,746 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                       </div>
                     )}
 
+                    {/* Early Tool Recommendations — styled cards */}
+                    {message.isEarlyRecommendation && message.earlyTools && (
+                      <div className="early-recs-container" style={{ marginTop: '1rem' }}>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                          gap: '0.75rem',
+                          marginBottom: '1rem',
+                        }}>
+                          {message.earlyTools.map((tool, i) => (
+                            <div
+                              key={i}
+                              className="early-rec-card"
+                              style={{
+                                background: 'linear-gradient(135deg, #fafaff 0%, #f5f3ff 100%)',
+                                border: '1px solid rgba(124, 58, 237, 0.15)',
+                                borderRadius: '12px',
+                                padding: '1rem 1.1rem',
+                                cursor: tool.url ? 'pointer' : 'default',
+                                transition: 'all 0.25s ease',
+                                opacity: 0,
+                                animation: `fadeIn 0.4s ease-out ${i * 0.1}s forwards`,
+                                position: 'relative',
+                                overflow: 'hidden',
+                              }}
+                              onClick={() => tool.url && window.open(tool.url, '_blank')}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                e.currentTarget.style.boxShadow = '0 8px 25px rgba(124, 58, 237, 0.15)';
+                                e.currentTarget.style.borderColor = 'rgba(124, 58, 237, 0.35)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = 'none';
+                                e.currentTarget.style.borderColor = 'rgba(124, 58, 237, 0.15)';
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--ikshan-text-primary, #111827)' }}>
+                                  {tool.name}
+                                </span>
+                                {tool.rating && (
+                                  <span style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    color: '#f59e0b',
+                                    background: '#fef3c7',
+                                    padding: '0.15rem 0.45rem',
+                                    borderRadius: '6px',
+                                  }}>
+                                    ⭐ {tool.rating}
+                                  </span>
+                                )}
+                              </div>
+                              <p style={{
+                                fontSize: '0.82rem',
+                                color: 'var(--ikshan-text-secondary, #6b7280)',
+                                lineHeight: 1.45,
+                                margin: '0 0 0.5rem 0',
+                              }}>
+                                {tool.description}
+                              </p>
+                              {tool.why_relevant && (
+                                <p style={{
+                                  fontSize: '0.78rem',
+                                  color: 'var(--ikshan-purple, #7c3aed)',
+                                  fontWeight: 500,
+                                  margin: 0,
+                                  lineHeight: 1.4,
+                                }}>
+                                  {tool.why_relevant}
+                                </p>
+                              )}
+                              {/* Enriched tool context: issue solved, stage, ease */}
+                              {(tool.issue_solved || tool.implementation_stage || tool.ease_of_use) && (
+                                <div style={{
+                                  marginTop: '0.5rem',
+                                  padding: '0.5rem 0.6rem',
+                                  background: 'rgba(124, 58, 237, 0.04)',
+                                  borderRadius: '8px',
+                                  fontSize: '0.75rem',
+                                  lineHeight: 1.5,
+                                  color: 'var(--ikshan-text-secondary, #4b5563)',
+                                }}>
+                                  {tool.issue_solved && (
+                                    <div style={{ marginBottom: '0.25rem' }}>
+                                      <span style={{ fontWeight: 600, color: '#059669' }}>🎯 Solves: </span>
+                                      {tool.issue_solved}
+                                    </div>
+                                  )}
+                                  {tool.implementation_stage && (
+                                    <div style={{ marginBottom: '0.25rem' }}>
+                                      <span style={{ fontWeight: 600, color: '#3b82f6' }}>📅 When: </span>
+                                      {tool.implementation_stage}
+                                    </div>
+                                  )}
+                                  {tool.ease_of_use && (
+                                    <div>
+                                      <span style={{ fontWeight: 600, color: '#f59e0b' }}>⚡ Ease: </span>
+                                      {tool.ease_of_use}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {tool.category && (
+                                <span style={{
+                                  display: 'inline-block',
+                                  marginTop: '0.5rem',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 600,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.04em',
+                                  color: '#7c3aed',
+                                  background: 'rgba(124, 58, 237, 0.08)',
+                                  padding: '0.2rem 0.5rem',
+                                  borderRadius: '4px',
+                                }}>
+                                  {tool.category}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{
+                          padding: '0.75rem 1rem',
+                          background: 'linear-gradient(90deg, rgba(124, 58, 237, 0.06) 0%, rgba(99, 102, 241, 0.06) 100%)',
+                          borderRadius: '10px',
+                          borderLeft: '3px solid var(--ikshan-purple, #7c3aed)',
+                        }}>
+                          <p style={{
+                            fontSize: '0.85rem',
+                            color: 'var(--ikshan-text-primary, #374151)',
+                            margin: 0,
+                            lineHeight: 1.5,
+                          }}>
+                            💡 <strong>Let's scope your problem more narrowly</strong> — a few more questions will help me find the <em>exact</em> tools for your specific situation.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Business URL Input — shown right after tool recommendations */}
+                    {message.showBusinessUrlInput && (flowStage === 'url-input' || message.isError) && (
+                      <div className="business-url-input-card" style={{
+                        marginTop: '1rem',
+                        padding: '1.25rem',
+                        borderRadius: '14px',
+                        border: '1px solid rgba(124, 58, 237, 0.2)',
+                        background: 'linear-gradient(135deg, #fafaff 0%, #f0eeff 100%)',
+                        boxShadow: '0 2px 12px rgba(124, 58, 237, 0.08)',
+                      }}>
+                        {/* Website URL */}
+                        <div style={{ marginBottom: '0.6rem' }}>
+                          <label style={{
+                            display: 'block',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            color: 'var(--ikshan-text-secondary, #6b7280)',
+                            marginBottom: '0.3rem',
+                          }}>🌐 Website URL</label>
+                          <input
+                            type="url"
+                            placeholder="yourcompany.com"
+                            style={{
+                              width: '100%',
+                              padding: '0.7rem 1rem',
+                              borderRadius: '10px',
+                              border: '1.5px solid var(--ikshan-border, #d1d5db)',
+                              background: 'var(--ikshan-input-bg, #fff)',
+                              color: 'var(--ikshan-text-primary, #1a1a1a)',
+                              fontSize: '0.9rem',
+                              outline: 'none',
+                              transition: 'border-color 0.2s ease',
+                              boxSizing: 'border-box',
+                            }}
+                            onFocus={(e) => { e.target.style.borderColor = '#7c3aed'; }}
+                            onBlur={(e) => { e.target.style.borderColor = '#d1d5db'; }}
+                            id="business-url-input"
+                            autoFocus
+                          />
+                        </div>
+
+                        {/* GBP URL */}
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <label style={{
+                            display: 'block',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            color: 'var(--ikshan-text-secondary, #6b7280)',
+                            marginBottom: '0.3rem',
+                          }}>📍 Google Business Profile URL <span style={{ fontWeight: 400, opacity: 0.7 }}>(optional)</span></label>
+                          <input
+                            type="url"
+                            placeholder="Paste your Google Maps / GBP link"
+                            style={{
+                              width: '100%',
+                              padding: '0.7rem 1rem',
+                              borderRadius: '10px',
+                              border: '1.5px solid var(--ikshan-border, #d1d5db)',
+                              background: 'var(--ikshan-input-bg, #fff)',
+                              color: 'var(--ikshan-text-primary, #1a1a1a)',
+                              fontSize: '0.9rem',
+                              outline: 'none',
+                              transition: 'border-color 0.2s ease',
+                              boxSizing: 'border-box',
+                            }}
+                            onFocus={(e) => { e.target.style.borderColor = '#7c3aed'; }}
+                            onBlur={(e) => { e.target.style.borderColor = '#d1d5db'; }}
+                            id="gbp-url-input"
+                          />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <button
+                            onClick={() => {
+                              const websiteInput = document.getElementById('business-url-input');
+                              const gbpInput = document.getElementById('gbp-url-input');
+                              const website = websiteInput ? websiteInput.value.trim() : '';
+                              const gbp = gbpInput ? gbpInput.value.trim() : '';
+                              if (website || gbp) {
+                                handleBusinessUrlSubmit(website, gbp);
+                              }
+                            }}
+                            style={{
+                              padding: '0.7rem 1.25rem',
+                              borderRadius: '10px',
+                              border: 'none',
+                              background: 'linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)',
+                              color: '#fff',
+                              fontSize: '0.85rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                              transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.transform = 'translateY(-1px)';
+                              e.target.style.boxShadow = '0 4px 14px rgba(124, 58, 237, 0.3)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.transform = 'translateY(0)';
+                              e.target.style.boxShadow = 'none';
+                            }}
+                          >
+                            Analyze My Business &rarr;
+                          </button>
+                        </div>
+                        <button
+                          onClick={handleSkipBusinessUrl}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--ikshan-text-secondary, #9ca3af)',
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            padding: '0.25rem 0',
+                            marginTop: '0.5rem',
+                            opacity: 0.8,
+                            transition: 'opacity 0.2s',
+                          }}
+                          onMouseEnter={(e) => { e.target.style.opacity = 1; e.target.style.textDecoration = 'underline'; }}
+                          onMouseLeave={(e) => { e.target.style.opacity = 0.8; e.target.style.textDecoration = 'none'; }}
+                        >
+                          Skip — without URLs, we'll give general recommendations
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Scale Questions — all-at-once form */}
+                    {message.showScaleForm && flowStage === 'scale-questions' && !scaleFormSubmitted && scaleQuestions.length > 0 && (
+                      <div className="scale-form-modern">
+                        {scaleQuestions.map((q, qIdx) => (
+                          <div key={q.id} className="scale-q-group">
+                            <div className="scale-q-label">
+                              <span>{q.icon}</span>
+                              <span>{q.question}</span>
+                              {q.multiSelect && <span className="scale-q-multi-hint">(select multiple)</span>}
+                            </div>
+                            <div className="scale-q-pills">
+                              {q.options.map((opt, oIdx) => {
+                                const sel = scaleFormSelections[q.id];
+                                const isSelected = q.multiSelect
+                                  ? Array.isArray(sel) && sel.includes(opt)
+                                  : sel === opt;
+                                return (
+                                  <button
+                                    key={oIdx}
+                                    className={`scale-pill ${isSelected ? 'selected' : ''}`}
+                                    onClick={() => {
+                                      if (q.multiSelect) {
+                                        setScaleFormSelections(prev => {
+                                          const curr = Array.isArray(prev[q.id]) ? prev[q.id] : [];
+                                          return {
+                                            ...prev,
+                                            [q.id]: curr.includes(opt)
+                                              ? curr.filter(v => v !== opt)
+                                              : [...curr, opt],
+                                          };
+                                        });
+                                      } else {
+                                        setScaleFormSelections(prev => ({ ...prev, [q.id]: opt }));
+                                      }
+                                    }}
+                                  >
+                                    {opt}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="scale-form-submit-row">
+                          <button
+                            onClick={handleScaleFormSubmit}
+                            disabled={!scaleQuestions.every(q => {
+                              const sel = scaleFormSelections[q.id];
+                              return q.multiSelect
+                                ? Array.isArray(sel) && sel.length > 0
+                                : !!sel;
+                            })}
+                            className={`scale-submit-btn ${scaleQuestions.every(q => {
+                              const sel = scaleFormSelections[q.id];
+                              return q.multiSelect
+                                ? Array.isArray(sel) && sel.length > 0
+                                : !!sel;
+                            }) ? 'ready' : ''}`}
+                          >
+                            Continue →
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Business Intelligence Verdict Card — DISABLED ── */}
+                    {false && message.isBusinessIntelVerdict && message.businessIntelData && (
+                      <div className="bi-verdict-container">
+                        {/* Verdict headline */}
+                        {message.businessIntelData.verdict_line && (
+                          <div className="bi-verdict-headline">
+                            <span className="bi-verdict-headline-icon">⚡</span>
+                            <span className="bi-verdict-headline-text">{message.businessIntelData.verdict_line}</span>
+                          </div>
+                        )}
+
+                        {/* ICP Snapshot */}
+                        {message.businessIntelData.icp_snapshot && (
+                          <div className="bi-section bi-icp">
+                            <div className="bi-section-label">
+                              <span className="bi-section-icon">👤</span> Who Your Ideal Customer Is
+                            </div>
+                            <p className="bi-section-text">{message.businessIntelData.icp_snapshot}</p>
+                          </div>
+                        )}
+
+                        {/* SEO Health */}
+                        {message.businessIntelData.seo_health && (
+                          <div className="bi-section bi-seo">
+                            <div className="bi-section-label">
+                              <span className="bi-section-icon">🔍</span> SEO Health
+                              <span className={`bi-seo-score ${message.businessIntelData.seo_health.score >= 7 ? 'good' : message.businessIntelData.seo_health.score >= 4 ? 'okay' : 'poor'}`}>
+                                {message.businessIntelData.seo_health.score}/10
+                              </span>
+                            </div>
+                            <div className="bi-seo-bar-track">
+                              <div className="bi-seo-bar-fill" style={{ width: `${message.businessIntelData.seo_health.score * 10}%` }} />
+                            </div>
+                            <div className="bi-seo-details">
+                              {message.businessIntelData.seo_health.working && (
+                                <div className="bi-seo-row">
+                                  <span className="bi-seo-tag working">✓ Working</span>
+                                  <span>{message.businessIntelData.seo_health.working}</span>
+                                </div>
+                              )}
+                              {message.businessIntelData.seo_health.missing && (
+                                <div className="bi-seo-row">
+                                  <span className="bi-seo-tag missing">✗ Missing</span>
+                                  <span>{message.businessIntelData.seo_health.missing}</span>
+                                </div>
+                              )}
+                              {message.businessIntelData.seo_health.quick_win && (
+                                <div className="bi-seo-row">
+                                  <span className="bi-seo-tag quickwin">⚡ Quick Win</span>
+                                  <span>{message.businessIntelData.seo_health.quick_win}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Funnel Strategies — Collapsible */}
+                        {[
+                          { key: 'top_funnel', label: 'Top Funnel — Awareness & Discovery', icon: '📢', color: '#8b5cf6' },
+                          { key: 'mid_funnel', label: 'Mid Funnel — Consideration & Trust', icon: '🤝', color: '#f59e0b' },
+                          { key: 'bottom_funnel', label: 'Bottom Funnel — Conversion & Revenue', icon: '💰', color: '#10b981' },
+                        ].map(funnel => (
+                          message.businessIntelData[funnel.key] && message.businessIntelData[funnel.key].length > 0 && (
+                            <details key={funnel.key} className="bi-funnel-section" open>
+                              <summary className="bi-funnel-header" style={{ '--funnel-color': funnel.color }}>
+                                <span className="bi-funnel-icon">{funnel.icon}</span>
+                                <span className="bi-funnel-label">{funnel.label}</span>
+                                <span className="bi-funnel-count">{message.businessIntelData[funnel.key].length} strategies</span>
+                              </summary>
+                              <div className="bi-funnel-strategies">
+                                {message.businessIntelData[funnel.key].map((s, i) => (
+                                  <div key={i} className="bi-strategy-item" style={{ animationDelay: `${i * 0.06}s` }}>
+                                    <div className="bi-strategy-name">
+                                      <span className="bi-strategy-num" style={{ background: funnel.color }}>{i + 1}</span>
+                                      {s.strategy}
+                                    </div>
+                                    <div className="bi-strategy-action">{s.action}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )
+                        ))}
+                      </div>
+                    )}
+
+                    {/* ── AI Playbook — Gap Questions with Options ── */}
+                    {message.isPlaybookGapQuestions && (
+                      <div className="playbook-gap-container" style={{
+                        background: 'linear-gradient(135deg, #faf5ff 0%, #f0f9ff 100%)',
+                        border: '1px solid rgba(139, 92, 246, 0.25)',
+                        borderRadius: '16px',
+                        padding: '1.5rem',
+                        marginTop: '0.75rem',
+                      }}>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#7c3aed', marginBottom: '0.75rem' }}>
+                          📋 A few more details needed
+                        </div>
+
+                        {/* Render parsed gap questions with option buttons */}
+                        {message.gapQuestionsParsed && message.gapQuestionsParsed.length > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                            {message.gapQuestionsParsed.map((gq) => (
+                              <div key={gq.id} style={{
+                                background: 'rgba(255,255,255,0.7)',
+                                borderRadius: '12px',
+                                padding: '1rem',
+                                border: '1px solid rgba(139, 92, 246, 0.12)',
+                              }}>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#374151', marginBottom: '0.6rem' }}>
+                                  {gq.id} — {gq.label}
+                                </div>
+                                <div style={{ fontSize: '0.84rem', color: '#6b7280', marginBottom: '0.6rem', lineHeight: 1.5 }}>
+                                  {gq.question}
+                                </div>
+                                {playbookStage === 'gap-questions' && gq.options && gq.options.length > 0 && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                    {gq.options.map((opt, oi) => {
+                                      const isSelected = playbookGapSelections[gq.id] === opt;
+                                      return (
+                                        <button
+                                          key={oi}
+                                          onClick={() => setPlaybookGapSelections(prev => ({ ...prev, [gq.id]: opt }))}
+                                          style={{
+                                            padding: '0.55rem 0.85rem',
+                                            borderRadius: '8px',
+                                            border: isSelected ? '2px solid #7c3aed' : '1px solid rgba(139, 92, 246, 0.2)',
+                                            background: isSelected ? 'rgba(124, 58, 237, 0.08)' : '#fff',
+                                            color: isSelected ? '#7c3aed' : '#374151',
+                                            fontWeight: isSelected ? 600 : 400,
+                                            fontSize: '0.84rem',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            transition: 'all 0.15s ease',
+                                          }}
+                                        >
+                                          {opt}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                {/* Show selected state after submission */}
+                                {playbookStage !== 'gap-questions' && playbookGapSelections[gq.id] && (
+                                  <div style={{ fontSize: '0.84rem', color: '#7c3aed', fontWeight: 500, marginTop: '0.3rem' }}>
+                                    ✓ {playbookGapSelections[gq.id]}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+
+                            {/* Submit button */}
+                            {playbookStage === 'gap-questions' && (
+                              <button
+                                onClick={handlePlaybookGapSubmit}
+                                disabled={
+                                  !message.gapQuestionsParsed.every(gq => playbookGapSelections[gq.id])
+                                }
+                                style={{
+                                  padding: '0.75rem 1.5rem',
+                                  borderRadius: '10px',
+                                  border: 'none',
+                                  background: message.gapQuestionsParsed.every(gq => playbookGapSelections[gq.id])
+                                    ? '#7c3aed' : '#d1d5db',
+                                  color: '#fff',
+                                  fontWeight: 600,
+                                  fontSize: '0.9rem',
+                                  cursor: message.gapQuestionsParsed.every(gq => playbookGapSelections[gq.id])
+                                    ? 'pointer' : 'not-allowed',
+                                  alignSelf: 'flex-end',
+                                  transition: 'background 0.2s',
+                                }}
+                              >
+                                Submit Answers →
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          /* Fallback: show raw text + textarea if parsing failed */
+                          <>
+                            <div style={{ fontSize: '0.88rem', color: '#374151', whiteSpace: 'pre-wrap', lineHeight: 1.6, marginBottom: '1rem' }}>
+                              {message.gapQuestionsText}
+                            </div>
+                            {playbookStage === 'gap-questions' && (
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <textarea
+                                  value={playbookGapAnswer}
+                                  onChange={(e) => setPlaybookGapAnswer(e.target.value)}
+                                  placeholder="Type your answers here..."
+                                  rows={3}
+                                  style={{
+                                    flex: 1,
+                                    padding: '0.75rem',
+                                    borderRadius: '10px',
+                                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                                    fontSize: '0.88rem',
+                                    resize: 'vertical',
+                                    fontFamily: 'inherit',
+                                  }}
+                                />
+                                <button
+                                  onClick={() => {
+                                    if (playbookGapAnswer.trim()) handlePlaybookGapSubmit();
+                                  }}
+                                  disabled={!playbookGapAnswer.trim()}
+                                  style={{
+                                    padding: '0.75rem 1.25rem',
+                                    borderRadius: '10px',
+                                    border: 'none',
+                                    background: playbookGapAnswer.trim() ? '#7c3aed' : '#d1d5db',
+                                    color: '#fff',
+                                    fontWeight: 600,
+                                    cursor: playbookGapAnswer.trim() ? 'pointer' : 'not-allowed',
+                                    alignSelf: 'flex-end',
+                                  }}
+                                >
+                                  Submit →
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── AI Playbook Result ── */}
+                    {message.isPlaybook && message.playbookData && (
+                      <div className="playbook-container" style={{ marginTop: '0.75rem' }}>
+                        {message.playbookData.icpCard && (
+                          <PlaybookCollapsible
+                            key="icp"
+                            title="Ideal Customer Profile"
+                            icon="👤"
+                            color="#0284c7"
+                            bg="linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)"
+                            borderColor="rgba(14, 165, 233, 0.25)"
+                            content={message.playbookData.icpCard}
+                          />
+                        )}
+                        {message.playbookData.playbook && (
+                          <PlaybookCollapsible
+                            key="playbook"
+                            title="Your 10-Step Growth Playbook"
+                            icon="📋"
+                            color="#7c3aed"
+                            bg="linear-gradient(135deg, #faf5ff 0%, #f5f3ff 100%)"
+                            borderColor="rgba(139, 92, 246, 0.25)"
+                            content={message.playbookData.playbook}
+                            isPlaybookSteps
+                          />
+                        )}
+                        {message.playbookData.toolMatrix && (
+                          <PlaybookCollapsible
+                            key="tools"
+                            title="Tool & Tech Matrix"
+                            icon="🛠"
+                            color="#059669"
+                            bg="linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)"
+                            borderColor="rgba(16, 185, 129, 0.25)"
+                            content={message.playbookData.toolMatrix}
+                          />
+                        )}
+                        {message.playbookData.websiteAudit && (
+                          <PlaybookCollapsible
+                            key="audit"
+                            title="Website Audit & Recommendations"
+                            icon="🌐"
+                            color="#d97706"
+                            bg="linear-gradient(135deg, #fff7ed 0%, #fffbeb 100%)"
+                            borderColor="rgba(245, 158, 11, 0.25)"
+                            content={message.playbookData.websiteAudit}
+                          />
+                        )}
+                        {message.playbookData.latencies && Object.keys(message.playbookData.latencies).length > 0 && (
+                          <div style={{
+                            display: 'flex',
+                            gap: '0.75rem',
+                            flexWrap: 'wrap',
+                            fontSize: '0.75rem',
+                            color: '#9ca3af',
+                            marginTop: '0.5rem',
+                          }}>
+                            {Object.entries(message.playbookData.latencies).map(([agent, ms]) => (
+                              <span key={agent}>{agent}: {(ms / 1000).toFixed(1)}s</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Crawl Summary — compressed 5-point business snapshot */}
+                    {message.showCrawlDetails && !message.isPlaybook && message.crawlSummaryPoints && message.crawlSummaryPoints.length > 0 && (
+                      <div className="crawl-summary-card" style={{
+                        marginTop: '0.75rem',
+                        padding: '1rem 1.25rem',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                        background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
+                        boxShadow: '0 2px 8px rgba(16, 185, 129, 0.08)',
+                      }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                          {message.crawlSummaryPoints.map((point, i) => (
+                            <div key={i} style={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '0.5rem',
+                              fontSize: '0.85rem',
+                              color: 'var(--ikshan-text-primary, #1a1a1a)',
+                              lineHeight: '1.4',
+                            }}>
+                              <span style={{ color: '#10b981', fontWeight: 700, flexShrink: 0 }}>✓</span>
+                              <span>{point}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <details style={{ marginTop: '0.75rem' }}>
+                          <summary style={{
+                            fontSize: '0.78rem',
+                            color: 'var(--ikshan-text-secondary, #6b7280)',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            fontWeight: 500,
+                          }}>
+                            View full analysis details
+                          </summary>
+                          <div style={{
+                            marginTop: '0.5rem',
+                            padding: '0.75rem',
+                            fontSize: '0.78rem',
+                            color: 'var(--ikshan-text-secondary, #6b7280)',
+                            background: 'rgba(255,255,255,0.6)',
+                            borderRadius: '8px',
+                            lineHeight: '1.5',
+                          }}>
+                            This analysis was generated from a live crawl of your website. It captures your business positioning, target audience signals, technology stack, content strengths, and key opportunities. These insights are factored into your personalized tool recommendations.
+                          </div>
+                        </details>
+                      </div>
+                    )}
+
                     {/* Diagnostic Section Options — in-chat */}
                     {message.diagnosticOptions && message.diagnosticOptions.length > 0 && (
                       <div className="diagnostic-options" style={{ marginTop: '1rem' }}>
-                        {message.sectionIndex === currentDynamicQIndex ? (
+                        {/* Precision questions */}
+                        {message.isPrecisionQuestion ? (
+                          message.precisionIndex === currentPrecisionQIndex && flowStage === 'precision-questions' ? (
+                            <>
+                              {message.diagnosticOptions.map((opt, i) => (
+                                <button
+                                  key={i}
+                                  className="diagnostic-option-btn"
+                                  onClick={() => !isTyping && handlePrecisionAnswer(opt)}
+                                  disabled={isTyping}
+                                  style={{
+                                    animationDelay: `${i * 0.04}s`,
+                                    opacity: isTyping ? 0.5 : undefined,
+                                    pointerEvents: isTyping ? 'none' : undefined,
+                                  }}
+                                >
+                                  {opt}
+                                </button>
+                              ))}
+                              {message.allowsFreeText && (
+                                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                  <input
+                                    type="text"
+                                    value={dynamicFreeText}
+                                    onChange={(e) => setDynamicFreeText(e.target.value)}
+                                    onKeyPress={(e) => {
+                                      if (e.key === 'Enter' && dynamicFreeText.trim()) {
+                                        handlePrecisionAnswer(dynamicFreeText.trim());
+                                        setDynamicFreeText('');
+                                      }
+                                    }}
+                                    placeholder="Or describe your own..."
+                                    className="diagnostic-free-input"
+                                  />
+                                  <button
+                                    onClick={() => { if (dynamicFreeText.trim()) { handlePrecisionAnswer(dynamicFreeText.trim()); setDynamicFreeText(''); } }}
+                                    disabled={!dynamicFreeText.trim()}
+                                    className="diagnostic-free-submit"
+                                  >
+                                    &rarr;
+                                  </button>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <p style={{ color: 'var(--ikshan-text-secondary, #6b7280)', fontSize: '0.85rem', fontStyle: 'italic', marginTop: '0.5rem' }}>
+                              &#10003; Answered
+                            </p>
+                          )
+                        ) : (
+                        /* Regular diagnostic questions */
+                        message.sectionIndex === currentDynamicQIndex ? (
                           <>
                             {message.diagnosticOptions.map((opt, i) => (
                               <button
                                 key={i}
                                 className="diagnostic-option-btn"
-                                onClick={() => handleDynamicAnswer(opt)}
-                                style={{ animationDelay: `${i * 0.04}s` }}
+                                onClick={() => !isTyping && !answerProcessing && handleDynamicAnswer(opt)}
+                                disabled={isTyping || answerProcessing}
+                                style={{
+                                  animationDelay: `${i * 0.04}s`,
+                                  opacity: isTyping ? 0.5 : undefined,
+                                  pointerEvents: isTyping ? 'none' : undefined,
+                                }}
                               >
                                 {opt}
                               </button>
@@ -3467,7 +5373,76 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                           <p style={{ color: 'var(--ikshan-text-secondary, #6b7280)', fontSize: '0.85rem', fontStyle: 'italic', marginTop: '0.5rem' }}>
                             &#10003; Answered
                           </p>
+                        )
                         )}
+                      </div>
+                    )}
+
+                    {/* Website URL Input — in-chat */}
+                    {message.showWebsiteInput && flowStage === 'website-input' && (
+                      <div className="website-input-card" style={{
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        borderRadius: '12px',
+                        border: '1px solid var(--ikshan-border, #e5e7eb)',
+                        background: 'var(--ikshan-card-bg, #f9fafb)',
+                      }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                          <input
+                            type="url"
+                            placeholder="https://yourbusiness.com"
+                            style={{
+                              flex: 1,
+                              padding: '0.625rem 0.875rem',
+                              borderRadius: '8px',
+                              border: '1px solid var(--ikshan-border, #d1d5db)',
+                              background: 'var(--ikshan-input-bg, #fff)',
+                              color: 'var(--ikshan-text-primary, #1a1a1a)',
+                              fontSize: '0.9rem',
+                              outline: 'none',
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && e.target.value.trim()) {
+                                handleWebsiteSubmit(e.target.value);
+                              }
+                            }}
+                            id="website-url-input"
+                          />
+                          <button
+                            onClick={() => {
+                              const input = document.getElementById('website-url-input');
+                              if (input && input.value.trim()) {
+                                handleWebsiteSubmit(input.value);
+                              }
+                            }}
+                            style={{
+                              padding: '0.625rem 1rem',
+                              borderRadius: '8px',
+                              border: 'none',
+                              background: 'var(--ikshan-accent, #6366f1)',
+                              color: '#fff',
+                              fontSize: '0.85rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Analyze &rarr;
+                          </button>
+                        </div>
+                        <button
+                          onClick={handleSkipWebsite}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--ikshan-text-secondary, #6b7280)',
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                            padding: '0.25rem 0',
+                          }}
+                        >
+                          Skip — take me to my recommendations
+                        </button>
                       </div>
                     )}
 
@@ -3573,38 +5548,54 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                     )}
 
                     {/* RCA Question Options */}
-                    {message.isRCAQuestion && message.rcaOptions && (
+                    {message.isRCAQuestion && message.rcaOptions && (() => {
+                      const questionKey = `q${message.rcaQuestionIndex + 1}`;
+                      const answered = !!rcaResponses[questionKey];
+                      const selectedOption = rcaResponses[questionKey];
+                      return (
                       <div className="rca-options-container" style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {message.rcaOptions.map((option, index) => (
+                        {message.rcaOptions.map((option, index) => {
+                          const isSelected = selectedOption === option;
+                          return (
                           <button
                             key={index}
-                            onClick={() => handleRCAOptionSelect(option, message.rcaQuestionIndex)}
-                            className="rca-option-btn"
+                            onClick={() => !answered && handleRCAOptionSelect(option, message.rcaQuestionIndex)}
+                            className={`rca-option-btn${isSelected ? ' selected' : ''}`}
+                            disabled={answered}
                             style={{
                               padding: '0.75rem 1rem',
-                              background: 'var(--ikshan-surface)',
-                              border: '1px solid var(--ikshan-border)',
+                              background: isSelected ? 'var(--ikshan-chat-bubble-user)' : 'var(--ikshan-surface)',
+                              border: isSelected ? '2px solid var(--ikshan-purple)' : '1px solid var(--ikshan-border)',
                               borderRadius: '0.75rem',
                               textAlign: 'left',
-                              cursor: 'pointer',
+                              cursor: answered ? 'default' : 'pointer',
                               transition: 'all 0.2s ease',
                               fontSize: '0.95rem',
-                              color: 'var(--ikshan-text-primary)'
+                              color: 'var(--ikshan-text-primary)',
+                              opacity: answered && !isSelected ? 0.4 : 1,
+                              pointerEvents: answered ? 'none' : 'auto'
                             }}
                             onMouseEnter={(e) => {
-                              e.target.style.borderColor = 'var(--ikshan-purple)';
-                              e.target.style.background = 'var(--ikshan-chat-bubble-user)';
+                              if (!answered) {
+                                e.target.style.borderColor = 'var(--ikshan-purple)';
+                                e.target.style.background = 'var(--ikshan-chat-bubble-user)';
+                              }
                             }}
                             onMouseLeave={(e) => {
-                              e.target.style.borderColor = 'var(--ikshan-border)';
-                              e.target.style.background = 'var(--ikshan-surface)';
+                              if (!answered) {
+                                e.target.style.borderColor = 'var(--ikshan-border)';
+                                e.target.style.background = 'var(--ikshan-surface)';
+                              }
                             }}
                           >
-                            ☐ {option}
+                            {isSelected ? '☑' : '☐'} {option}
                           </button>
-                        ))}
+                          );
+                        })}
                       </div>
-                    )}
+                      );
+                    })()
+                    }
 
                     {/* RCA Data Collection Actions */}
                     {message.showRCADataCollectionActions && (
@@ -3631,11 +5622,22 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
                 <div className="message bot">
                   <div className="avatar"><Bot size={18} /></div>
                   <div className="message-content">
-                    <div className="typing-indicator" style={{ marginLeft: 0, padding: 0, boxShadow: 'none', background: 'transparent' }}>
-                      <div className="typing-dot"></div>
-                      <div className="typing-dot"></div>
-                      <div className="typing-dot"></div>
-                    </div>
+                    {taskClickProcessing ? (
+                      /* ── Sleek thinking animation during Q3 processing ── */
+                      <div className="thinking-clean" style={{ padding: '0.5rem 0.75rem' }}>
+                        <div className="thinking-clean-spinner" style={{ width: 18, height: 18 }} />
+                        <p key={thinkingPhraseIndex} className="thinking-clean-text" style={{ fontSize: '0.8rem' }}>
+                          {THINKING_PHRASES[thinkingPhraseIndex]}
+                        </p>
+                      </div>
+                    ) : (
+                      /* ── Default typing dots ── */
+                      <div className="typing-indicator" style={{ marginLeft: 0, padding: 0, boxShadow: 'none', background: 'transparent' }}>
+                        <div className="typing-dot"></div>
+                        <div className="typing-dot"></div>
+                        <div className="typing-dot"></div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -3793,6 +5795,13 @@ This solution helps at the **${subDomainName}** stage of your ${domainName} oper
           </div>
         </div>
       )}
+
+      {/* Context Pool Panel — Right side LLM transparency */}
+      <ContextPoolPanel
+        sessionId={sessionId}
+        isOpen={contextPoolOpen}
+        onClose={() => setContextPoolOpen(false)}
+      />
     </div>
   );
 };
